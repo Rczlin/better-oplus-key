@@ -19,3 +19,13 @@ target_link_libraries(sidekey_config PUBLIC sidekey_fsm)
 add_executable(test_config tests/test_config.c)
 target_link_libraries(test_config PRIVATE sidekey_config)
 add_test(NAME config COMMAND test_config)
+
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(LIBEVDEV REQUIRED IMPORTED_TARGET libevdev)
+
+add_library(sidekey_scan STATIC src/sidekey_scan.c)
+target_include_directories(sidekey_scan PUBLIC include)
+target_link_libraries(sidekey_scan PUBLIC PkgConfig::LIBEVDEV)
+add_executable(test_scan tests/test_scan.c)
+target_link_libraries(test_scan PRIVATE sidekey_scan)
+add_test(NAME scan COMMAND test_scan)
