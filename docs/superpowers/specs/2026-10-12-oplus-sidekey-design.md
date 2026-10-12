@@ -20,7 +20,8 @@ KernelSU 模块，独占接管 OnePlus 机身上的「自定义侧键」（不�
 已确认（真机 `getevent -p /dev/input/event0`，重启前后各一次）：
 
 - 仅声明一个按键码 `KEY 02df`。因此 `EVIOCGRAB` 独占 event0 不会误吞其他键。
-- 重启前后输出一致，节点编号稳定。
+- `event0` 在一次重启前后输出一致（仅一次样本）。
+- 同一时间 `event1` 在较早的 `getevent -lt` 中存在，之后执行 `getevent -p /dev/input/event1` 报 "No such file or directory"。因此节点编号不能假定稳定，必须启动时扫描（见第 4 节）。
 
 已确认（KernelSU 机制）：
 
