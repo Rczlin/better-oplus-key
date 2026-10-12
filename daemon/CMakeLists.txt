@@ -23,6 +23,12 @@ add_test(NAME config COMMAND test_config)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(LIBEVDEV REQUIRED IMPORTED_TARGET libevdev)
 
+add_library(sidekey_log STATIC src/sidekey_log.c)
+target_include_directories(sidekey_log PUBLIC include)
+add_executable(test_log tests/test_log.c)
+target_link_libraries(test_log PRIVATE sidekey_log)
+add_test(NAME log COMMAND test_log)
+
 add_library(sidekey_args STATIC src/sidekey_args.c)
 target_include_directories(sidekey_args PUBLIC include)
 add_executable(test_args tests/test_args.c)
