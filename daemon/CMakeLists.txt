@@ -20,8 +20,46 @@ add_executable(test_config tests/test_config.c)
 target_link_libraries(test_config PRIVATE sidekey_config)
 add_test(NAME config COMMAND test_config)
 
-find_package(PkgConfig REQUIRED)
-pkg_check_modules(LIBEVDEV REQUIRED IMPORTED_TARGET libevdev)
+if(ANDROID)
+  # NDK 交叉编译：直接编译 vendored libevdev 源码，不依赖主机 pkg-config。
+  set(LIBEVDEV_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/libevdev")
+  add_library(libevdev_static STATIC
+    ${LIBEVDEV_SRC}/libevdev/libevdev.c
+    ${LIBEVDEV_SRC}/libevdev/libevdev-names.c
+    ${LIBEVDEV_SRC}/libevdev/libevdev-uinput.c)
+  # event-names.h 是生成文件（meson 的 configure_file 规则）：由
+  # make-event-names.py 从 linux 内核头文件生成，输出到构建目录。
+  set(LIBEVDEV_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/libevdev-generated")
+  file(MAKE_DIRECTORY ${LIBEVDEV_GEN_DIR})
+  find_program(PYTHON3_EXE NAMES python3 python REQUIRED)
+  add_custom_command(
+    OUTPUT ${LIBEVDEV_GEN_DIR}/event-names.h
+    COMMAND ${PYTHON3_EXE} ${LIBEVDEV_SRC}/libevdev/make-event-names.py
+            ${LIBEVDEV_SRC}/include/linux/linux/input.h
+            ${LIBEVDEV_SRC}/include/linux/linux/input-event-codes.h
+            > ${LIBEVDEV_GEN_DIR}/event-names.h
+    DEPENDS ${LIBEVDEV_SRC}/libevdev/make-event-names.py
+            ${LIBEVDEV_SRC}/include/linux/linux/input.h
+            ${LIBEVDEV_SRC}/include/linux/linux/input-event-codes.h
+    COMMENT "Generating event-names.h")
+  add_custom_target(libevdev_gen DEPENDS ${LIBEVDEV_GEN_DIR}/event-names.h)
+  add_dependencies(libevdev_static libevdev_gen)
+
+  # 公共头文件是 libevdev/libevdev.h，因此 include 目录指向其上一级。
+  target_include_directories(libevdev_static PUBLIC
+    ${LIBEVDEV_SRC}
+    ${LIBEVDEV_SRC}/include/linux
+    ${LIBEVDEV_GEN_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/ndk-config)
+  target_compile_definitions(libevdev_static PRIVATE _GNU_SOURCE=1)
+  add_library(LIBEVDEV_DEP INTERFACE)
+  target_link_libraries(LIBEVDEV_DEP INTERFACE libevdev_static)
+else()
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(LIBEVDEV REQUIRED IMPORTED_TARGET libevdev)
+  add_library(LIBEVDEV_DEP INTERFACE)
+  target_link_libraries(LIBEVDEV_DEP INTERFACE PkgConfig::LIBEVDEV)
+endif()
 
 add_library(sidekey_runtime STATIC src/sidekey_runtime.c)
 target_include_directories(sidekey_runtime PUBLIC include)
@@ -44,7 +82,15 @@ add_test(NAME args COMMAND test_args)
 
 add_library(sidekey_scan STATIC src/sidekey_scan.c)
 target_include_directories(sidekey_scan PUBLIC include)
-target_link_libraries(sidekey_scan PUBLIC PkgConfig::LIBEVDEV)
+target_link_libraries(sidekey_scan PUBLIC LIBEVDEV_DEP)
 add_executable(test_scan tests/test_scan.c)
 target_link_libraries(test_scan PRIVATE sidekey_scan)
 add_test(NAME scan COMMAND test_scan)
+
+# 守护进程可执行文件：仅在 NDK 交叉编译时生成（主机只跑单元测试）。
+if(ANDROID)
+  add_executable(oplus-sidekey src/main.c)
+  target_link_libraries(oplus-sidekey PRIVATE
+    sidekey_args sidekey_config sidekey_fsm sidekey_log
+    sidekey_runtime sidekey_scan LIBEVDEV_DEP)
+endif()
