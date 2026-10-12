@@ -17,11 +17,15 @@ KernelSU 模块，独占接管 OnePlus 机身上的「自定义侧键」（不�
 - 按下、松开分别输出 `EV_KEY BTN_TRIGGER_HAPPY32` 的 `DOWN`、`UP`。`BTN_TRIGGER_HAPPY32` 对应键码 `735`（`0x2df`），与 13T 上的数据一致，也与已有模块的默认值一致。
 - 同名设备 `gpio-keys` 还有 `/dev/input/event1`。其他设备：`pmic_pwrkey`（event2）、`pmic_resin`（event3）、`touchpanel`（event6）等。
 
-已确认（真机 `getevent -p /dev/input/event0`，重启前后各一次）：
+已确认（真机 `getevent -pl` 完整节点表）：
 
-- 仅声明一个按键码 `KEY 02df`。因此 `EVIOCGRAB` 独占 event0 不会误吞其他键。
+- `event0`（`gpio-keys`）仅声明 `KEY 02df`。因此 `EVIOCGRAB` 独占 event0 不会误吞其他键。
+- `event1`（`gpio-keys`）仅声明 `KEY_VOLUMEDOWN`，不声明 `02df`。
+- 全部 11 个节点中，只有 `event0` 声明 `02df`。
+- 键码换算：内核 `BTN_TRIGGER_HAPPY1` 为 `0x2c0`（[input-event-codes.h](https://github.com/torvalds/linux/blob/master/include/uapi/linux/input-event-codes.h)），故 `BTN_TRIGGER_HAPPY32 = 0x2c0 + 31 = 0x2df`，与 `02df` 一致。
+- 两个节点都叫 `gpio-keys`，因此不能按名字匹配，必须按按键码能力匹配。
 - `event0` 在一次重启前后输出一致（仅一次样本）。
-- 同一时间 `event1` 在较早的 `getevent -lt` 中存在，之后执行 `getevent -p /dev/input/event1` 报 "No such file or directory"。因此节点编号不能假定稳定，必须启动时扫描（见第 4 节）。
+- 早前单独执行 `getevent -p /dev/input/event1` 报 "No such file or directory"，但完整列表中 `event1` 存在。原因未查明。实现不依赖固定编号，只按按键码扫描（见第 4 节）。
 
 已确认（KernelSU 机制）：
 
@@ -32,7 +36,7 @@ KernelSU 模块，独占接管 OnePlus 机身上的「自定义侧键」（不�
 - `EVIOCGRAB` 独占在该 ROM 上是否生效。
 - 守护进程退出（崩溃或被杀）后，独占是否立即释放。
 - 独占期间，系统对该键的原生动作是否完全失效。
-- 同名设备 `gpio-keys` 的 `event1` 是否也声明了 `02df`。这决定多设备匹配是否会真实出现。已选定 A（只 grab 第一个匹配设备），该项不影响实现，仅影响日志内容。
+- 已解决：`event1` 不声明 `02df`，本机型只有 `event0` 匹配。多设备策略仍按 A 实现，作为兜底。
 
 ## 3. 按压模型
 
@@ -48,6 +52,10 @@ KernelSU 模块，独占接管 OnePlus 机身上的「自定义侧键」（不�
 ## 4. 组件
 
 **守护进程 `oplus-sidekey`**（C，NDK 交叉编译，使用 libevdev 库，MIT 许可）
+
+- 工具链：NDK `28.2.13676358` 已安装于 `L:\CodeProgram\Android\Sdk\ndk\`，含 `windows-x86_64` 预编译 clang 与 `android.toolchain.cmake`。
+- 主机：当前无 gcc/clang/make，有 `cmake` 与 `ninja`（位于 STM32CubeCLT）。NDK 提供的 clang 足以交叉编译，主机上的单元测试需另行确定编译器，留给实施计划处理。
+- libevdev 为 MIT 许可（[FreshPorts](https://www.freshports.org/devel/libevdev)）。是否将其源码打包进模块，还是依赖设备已有的 libevdev，留给实施计划决定。
 
 - 由 `service.sh` 以 root 启动。
 - 启动时扫描 `/dev/input/event*`，用 libevdev 检查每个设备是否声明了 `keycode` 对应的 EV_KEY 按键码。取第一个匹配的设备，通过 `EVIOCGRAB` 独占，其余设备不动。
