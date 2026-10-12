@@ -6,9 +6,9 @@
 
 **Architecture:** 一个 C 守护进程（libevdev 读取，状态机解析按压序列，`EVIOCGRAB` 独占），由 `service.sh` 启动。状态机与设备 I/O 解耦，可在 WSL Ubuntu 上做原生单元测试。配置为模块目录内的纯文本文件。KSU WebUI 用 `kernelsu` 库的 `exec` 读写配置、启停守护进程。卸载时 `uninstall.sh` 结束守护进程。
 
-**Tech Stack:** C11；libevdev（MIT，源码随模块编译）；Android NDK `28.2.13676358` clang（交叉编译 arm64-v8a）；meson（libevdev 构建）；WSL Ubuntu 24/26 + gcc（主机单元测试）；原生 HTML/CSS/JS + `kernelsu@3.0.2`（WebUI，无构建步骤）。
+**Tech Stack:** C11；libevdev（MIT，源码随模块编译）；Android NDK `28.2.13676358` clang（交叉编译 arm64-v8a）；meson（libevdev 构建）；WSL Ubuntu 26.04 + gcc 15（主机单元测试）；WebUI：Vite + React + TypeScript + Tailwind CSS v4 + shadcn/ui + Sonner + `kernelsu@3.0.2`，构建目标 `chrome111`。
 
-**Spec:** `docs/superpowers/specs/2026-10-12-oplus-sidekey-design.md`（修订稿，提交 `4296cee`）
+**Spec:** `docs/superpowers/specs/2026-10-12-oplus-sidekey-design.md`（修订稿，含 WebUI 与双份日志修订）
 
 ## Global Constraints
 
@@ -21,6 +21,9 @@
 - 不使用 `initrc/`、`sepolicy.rule`、`system/`。
 - 禁用模块仅在重启后生效（不轮询 `disable` 文件）。
 - 文件与源码以 LF 保存。本仓库 `core.autocrlf=true`，提交前用 `.gitattributes` 固定 `*.sh text eol=lf`。
+- WebUI 源码位于 `webui/`，构建产物输出到 `module/webroot/`。`module/webroot/` 中的构建产物需提交，因为打包 zip 时不再运行 node。
+- WebUI 构建目标 `chrome111`（Tailwind v4 最低要求）。用户已确认 WebView ≥ 111（自报）。
+- 日志两份：`log.txt`（解释日志）与 `events.jsonl`（原始结构化记录），各 512 KiB 截尾，面板手动刷新。
 - 测试与真机验证分离：自动化测试必须全部通过；真机项由用户执行，计划里只列清单。
 
 ---
@@ -1011,86 +1014,425 @@ git commit -m "feat: module scripts and metadata"
 
 ---
 
-### Task 7: KSU WebUI
+### Task 7: KSU WebUI（Vite + React + Tailwind v4 + shadcn/ui + Sonner）
 
 **Files:**
-- Create: `module/webroot/index.html`
+- Create: `webui/package.json`
+- Create: `webui/tsconfig.json`
+- Create: `webui/vite.config.ts`
+- Create: `webui/index.html`
+- Create: `webui/components.json`（shadcn 配置，由 CLI 生成）
+- Create: `webui/src/main.tsx`
+- Create: `webui/src/App.tsx`
+- Create: `webui/src/index.css`（Tailwind v4 入口 + shadcn 主题变量）
+- Create: `webui/src/lib/ksu.ts`（对 `kernelsu` 的薄封装，负责非 KSU 环境降级）
+- Create: `webui/src/lib/config.ts`（配置的纯函数：解析、序列化、校验）
+- Create: `webui/src/lib/log.ts`（日志文本解析：解释日志与 JSONL 解析）
+- Create: `webui/src/components/`（shadcn 生成的 `button`、`input`、`label`、`card`、`badge`、`sonner`，以及自写的 `BindingRow`、`LogPanel`）
+- Create: `webui/tests/config.test.ts`
+- Create: `webui/tests/log.test.ts`
+- Create: `webui/tests/ksu.test.ts`
+- Modify: `module/webroot/`（由构建生成，不手改）
 
 **Interfaces:**
-- Consumes: `kernelsu@3.0.2` 的 `exec(command): Promise<{errno, stdout, stderr}>`；模块目录 `/data/adb/modules/oplus-sidekey/`
-- Produces: 单文件 WebUI，无构建步骤。
+- Consumes: `kernelsu` 的 `exec(command: string): Promise<{errno, stdout, stderr}>`；配置格式与守护进程 Task 3 一致；日志格式见下方。
+- Produces（供 Task 9 的 DOM 验证使用，`data-test` 属性为稳定契约）：
+  - `data-test="warning-root"`：顶部「命令以 root 执行，无沙箱」警告。
+  - `data-test="non-ksu-banner"`：非 KSU 环境提示（仅在无全局 `ksu` 时出现）。
+  - `data-test="binding-<seq>"`：14 个绑定输入框，`<seq>` 为 `0,1,00,01,10,11,000,001,010,011,100,101,110,111`。
+  - `data-test="daemon-toggle"`：启停守护进程按钮。
+  - `data-test="log-refresh"`：刷新日志按钮。
+  - `data-test="log-explain"` / `data-test="log-events"`：两个日志面板。
 
-WebUI 功能（严格对应 spec 第 4 节）：
-- 读取 `config.conf`，展示并允许修改 `long_press_ms`、`window_ms`（范围 100–800）。
-- 绑定列表：14 个序列（`0`、`1`、`00`、`01`、`10`、`11`、`000`…`111`），每个可填一条命令。
-- 写回时用 base64 传入，避免命令注入。
-- 启停守护进程按钮；查看 `log.txt` 末尾若干行。
-- 页面顶部明确提示：命令以 root 执行，无沙箱。
+**日志格式契约**（守护进程 Task 5 必须写出，WebUI 解析）：
+- `log.txt` 每行：`YYYY-MM-DD HH:MM:SS <LEVEL> <message>`，`LEVEL` 为 `INFO|WARN|ERROR`。
+- 序列解释行的 message 固定为：`seq=<0|1 串> action=<命令或 none> result=<exit 码或 dropped>`。
+- `events.jsonl` 每行一个 JSON：`{"wall_ms":<int>,"mono_ms":<int>,"edge":"down"|"up","code":<int>}`。
 
-- [ ] **Step 1: 确认 `kernelsu` 的加载方式**
+- [ ] **Step 1: 初始化 Vite + React + TypeScript 工程**
 
-WebUI 是纯静态页面，不能直接 `import 'kernelsu'`（无打包器）。需要把 `kernelsu@3.0.2` 的 `index.js` 作为本地模块随页面一起打包。
+在 `webui/` 下运行：
 
-Run（PowerShell）: `npm pack kernelsu@3.0.2` 后解压，读 `package/index.js` 前 40 行。
-Expected: 确认其导出为 ES module，且不依赖 Node 内置模块。
-- 若依赖 Node 内置模块：改用 `window.ksu` 或 WebUI 提供的全局 API，并在 Step 3 中注明。
-- 若为纯 ES module：复制为 `module/webroot/vendor/kernelsu.js`，页面用 `<script type="module">` 引用。
-
-**此步骤结果决定 Step 2 的写法，不要跳过。**
-
-- [ ] **Step 2: 写 `index.html` 的失败检查**
-
-用一个最小 Node 脚本检查 `index.html` 包含必需元素（在主机上用 node 运行，不需要浏览器）：
-
-```js
-// scripts/check-webui.mjs
-import { readFileSync } from 'node:fs';
-const html = readFileSync('module/webroot/index.html', 'utf8');
-const required = ['data-test="warning-root"', 'data-test="daemon-toggle"', 'data-test="binding-000"', 'btoa('];
-const missing = required.filter(s => !html.includes(s));
-if (missing.length) { console.error('MISSING:', missing); process.exit(1); }
-console.log('webui check ok');
+```bash
+npm create vite@latest webui -- --template react-ts
+cd webui && npm install
 ```
 
-Run: `node scripts/check-webui.mjs`
-Expected: FAIL，`MISSING`（文件尚不存在）。
+Expected: `webui/package.json` 生成，`npm run build` 能产出 `dist/`。若 `npm create vite` 交互式提示，选择 React + TypeScript。
 
-- [ ] **Step 3: 写 `index.html`**
+- [ ] **Step 2: 安装 Tailwind v4、shadcn 依赖与测试框架**
+
+```bash
+cd webui
+npm install tailwindcss @tailwindcss/vite kernelsu@3.0.2 sonner
+npm install -D vitest jsdom @testing-library/react @testing-library/jest-dom
+```
+
+Expected: `package.json` 中出现 `tailwindcss`、`@tailwindcss/vite`、`kernelsu@3.0.2`、`sonner`、`vitest`。
+
+- [ ] **Step 3: 写失败测试：配置纯函数（先于实现）**
+
+`webui/tests/config.test.ts`：
+
+```ts
+import { describe, it, expect } from "vitest";
+import { SEQUENCES, parseConfig, serializeConfig, validateTiming } from "../src/lib/config";
+
+describe("SEQUENCES", () => {
+  it("lists exactly the 14 bindable sequences in display order", () => {
+    expect(SEQUENCES).toEqual([
+      "0", "1",
+      "00", "01", "10", "11",
+      "000", "001", "010", "011", "100", "101", "110", "111",
+    ]);
+  });
+});
+
+describe("parseConfig", () => {
+  it("reads timing and bindings from config.conf text", () => {
+    const text = "keycode=735\nlong_press_ms=300\nwindow_ms=250\n0=echo single\n00=echo double\n";
+    const c = parseConfig(text);
+    expect(c.longPressMs).toBe(300);
+    expect(c.windowMs).toBe(250);
+    expect(c.bindings["0"]).toBe("echo single");
+    expect(c.bindings["00"]).toBe("echo double");
+    expect(c.bindings["1"]).toBe("");
+  });
+
+  it("ignores CRLF and comment lines", () => {
+    const c = parseConfig("# c\r\n0=echo x\r\n");
+    expect(c.bindings["0"]).toBe("echo x");
+  });
+
+  it("keeps everything after the first '=' as the command", () => {
+    const c = parseConfig("0=sh -c 'a=1; echo $a'\n");
+    expect(c.bindings["0"]).toBe("sh -c 'a=1; echo $a'");
+  });
+});
+
+describe("serializeConfig", () => {
+  it("round-trips through parseConfig", () => {
+    const original = {
+      longPressMs: 300,
+      windowMs: 300,
+      bindings: { ...Object.fromEntries(SEQUENCES.map((s) => [s, ""])), "0": "echo x" },
+    };
+    const back = parseConfig(serializeConfig(original));
+    expect(back.longPressMs).toBe(300);
+    expect(back.bindings["0"]).toBe("echo x");
+  });
+
+  it("omits empty bindings so the daemon sees no action", () => {
+    const text = serializeConfig({
+      longPressMs: 300,
+      windowMs: 300,
+      bindings: Object.fromEntries(SEQUENCES.map((s) => [s, ""])),
+    });
+    expect(text).not.toMatch(/^0=/m);
+  });
+});
+
+describe("validateTiming", () => {
+  it("accepts 100..800 inclusive", () => {
+    expect(validateTiming(100)).toBe(true);
+    expect(validateTiming(800)).toBe(true);
+  });
+  it("rejects values outside the range or non-integers", () => {
+    expect(validateTiming(99)).toBe(false);
+    expect(validateTiming(801)).toBe(false);
+    expect(validateTiming(300.5)).toBe(false);
+  });
+});
+```
+
+- [ ] **Step 4: 运行，确认失败**
+
+Run: `cd webui && npx vitest run tests/config.test.ts`
+Expected: FAIL，报 `Cannot find module '../src/lib/config'`。
+
+- [ ] **Step 5: 实现 `webui/src/lib/config.ts`，使测试通过**
 
 实现要点：
-- 顶部警告块 `data-test="warning-root"`：「命令以 root 执行，无沙箱。请勿输入不信任的命令。」
-- 参数表单：`long_press_ms`、`window_ms`，`<input type="number" min="100" max="800">`，提交前校验范围。
-- 14 个绑定输入框，`data-test="binding-<seq>"`，序列按 `0,00,000,1,...` 顺序排列。
-- 保存：生成 `config.conf` 文本，`btoa(unescape(encodeURIComponent(text)))` 编码，然后：
-  ```js
-  const r = await exec(`echo '${b64}' | base64 -d > /data/adb/modules/oplus-sidekey/config.conf`);
-  ```
-  注意：`b64` 只含 `A-Za-z0-9+/=`，单引号包裹是安全的。
-- 启停守护进程：`data-test="daemon-toggle"`，启动 `sh /data/adb/modules/oplus-sidekey/service.sh`，停止读 `daemon.pid` 后 `kill -TERM`。
-- 日志：`tail -n 50 /data/adb/modules/oplus-sidekey/log.txt`。
-- 保存后提示「需重启守护进程生效」，并允许一键重启守护进程（不是系统重启）。
+- `SEQUENCES` 按上面的顺序导出。
+- `parseConfig`：按行切分，去掉 `\r`，跳过空行与 `#` 行；按第一个 `=` 切分；`long_press_ms`、`window_ms` 解析为整数，缺省 300；键匹配 `^[01]{1,3}$` 视为绑定。
+- `serializeConfig`：输出 `keycode=735`、两个时间参数，然后只输出非空绑定。
+- `validateTiming(n)`：`Number.isInteger(n) && n >= 100 && n <= 800`。
 
-- [ ] **Step 4: 运行检查，确认通过**
+- [ ] **Step 6: 运行，确认通过**
 
-Run: `node scripts/check-webui.mjs`
-Expected: `webui check ok`。
+Run: `cd webui && npx vitest run tests/config.test.ts`
+Expected: PASS，全部用例通过。
 
-- [ ] **Step 5: 语法检查 HTML 中的 JS**
+- [ ] **Step 7: 写失败测试：日志解析（先于实现）**
 
-在 WSL 中把 `<script>` 内容抽出来用 `node --check`：
+`webui/tests/log.test.ts`：
 
-```bash
-node -e "const h=require('fs').readFileSync('module/webroot/index.html','utf8'); const m=[...h.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map(x=>x[1]).join('\n'); require('fs').writeFileSync('/tmp/webui.check.js', m);" && node --check /tmp/webui.check.js && echo "js syntax ok"
+```ts
+import { describe, it, expect } from "vitest";
+import { parseExplainLog, parseEventsJsonl } from "../src/lib/log";
+
+describe("parseExplainLog", () => {
+  it("parses a sequence explanation line", () => {
+    const line = "2026-10-12 16:00:01 INFO seq=00 action=echo double result=0";
+    const rows = parseExplainLog(line);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ level: "INFO", seq: "00", action: "echo double", result: "0" });
+  });
+
+  it("keeps non-sequence lines with level and message", () => {
+    const rows = parseExplainLog("2026-10-12 16:00:00 ERROR grab failed: EBUSY");
+    expect(rows[0]).toMatchObject({ level: "ERROR", message: "grab failed: EBUSY" });
+    expect(rows[0].seq).toBeUndefined();
+  });
+
+  it("skips blank and malformed lines without throwing", () => {
+    const rows = parseExplainLog("\n\nnot a log line\n2026-10-12 16:00:00 WARN ok\n");
+    expect(rows).toHaveLength(2);
+  });
+});
+
+describe("parseEventsJsonl", () => {
+  it("parses one JSON object per line", () => {
+    const text = '{"wall_ms":1,"mono_ms":10,"edge":"down","code":735}\n{"wall_ms":2,"mono_ms":20,"edge":"up","code":735}\n';
+    const rows = parseEventsJsonl(text);
+    expect(rows.map((r) => r.edge)).toEqual(["down", "up"]);
+  });
+
+  it("drops corrupt lines instead of failing the whole panel", () => {
+    const text = '{"wall_ms":1,"mono_ms":10,"edge":"down","code":735}\n{broken\n';
+    expect(parseEventsJsonl(text)).toHaveLength(1);
+  });
+});
 ```
 
-Expected: `js syntax ok`。
+- [ ] **Step 8: 运行，确认失败**
 
-- [ ] **Step 6: 提交**
+Run: `cd webui && npx vitest run tests/log.test.ts`
+Expected: FAIL，报 `Cannot find module '../src/lib/log'`。
+
+- [ ] **Step 9: 实现 `webui/src/lib/log.ts`，使测试通过**
+
+实现要点：
+- `parseExplainLog`：逐行正则 `^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (INFO|WARN|ERROR) (.*)$`。匹配失败的行跳过。若 message 形如 `seq=<s> action=<a> result=<r>`，则拆出 `seq`、`action`、`result`；否则保留 `message`。
+- `parseEventsJsonl`：逐行 `JSON.parse`，失败的行丢弃；只保留含 `edge` 与 `code` 的对象。
+
+- [ ] **Step 10: 运行，确认通过**
+
+Run: `cd webui && npx vitest run tests/log.test.ts`
+Expected: PASS。
+
+- [ ] **Step 11: 写失败测试：KSU 封装的非 KSU 降级（先于实现）**
+
+`webui/tests/ksu.test.ts`：
+
+```ts
+import { describe, it, expect, afterEach } from "vitest";
+import { isKsuEnvironment, runShell } from "../src/lib/ksu";
+
+afterEach(() => {
+  delete (globalThis as { ksu?: unknown }).ksu;
+});
+
+describe("isKsuEnvironment", () => {
+  it("is false when the global ksu bridge is absent", () => {
+    expect(isKsuEnvironment()).toBe(false);
+  });
+  it("is true when the global ksu bridge exists", () => {
+    (globalThis as { ksu?: unknown }).ksu = { exec: () => {} };
+    expect(isKsuEnvironment()).toBe(true);
+  });
+});
+
+describe("runShell", () => {
+  it("rejects without calling exec when not in KSU", async () => {
+    await expect(runShell("true")).rejects.toThrow(/非 KSU 环境/);
+  });
+});
+```
+
+- [ ] **Step 12: 运行，确认失败**
+
+Run: `cd webui && npx vitest run tests/ksu.test.ts`
+Expected: FAIL，报 `Cannot find module '../src/lib/ksu'`。
+
+- [ ] **Step 13: 实现 `webui/src/lib/ksu.ts`，使测试通过**
+
+```ts
+import { exec } from "kernelsu";
+
+export function isKsuEnvironment(): boolean {
+  return typeof (globalThis as { ksu?: unknown }).ksu !== "undefined";
+}
+
+export async function runShell(command: string) {
+  if (!isKsuEnvironment()) {
+    throw new Error("非 KSU 环境，无法执行 shell");
+  }
+  return exec(command);
+}
+```
+
+- [ ] **Step 14: 运行全部单元测试**
+
+Run: `cd webui && npx vitest run`
+Expected: 三个测试文件全部 PASS。
+
+- [ ] **Step 15: 初始化 Tailwind v4 与 shadcn**
+
+`webui/vite.config.ts`：
+
+```ts
+import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
+
+export default defineConfig({
+  base: "./",
+  plugins: [react(), tailwindcss()],
+  build: {
+    outDir: "../module/webroot",
+    emptyOutDir: true,
+    target: "chrome111",
+  },
+});
+```
+
+`webui/src/index.css` 第一行为 `@import "tailwindcss";`，然后由 shadcn 初始化补充主题变量。
+
+在 `webui/` 下运行 shadcn 初始化（具体参数以 CLI 交互为准，模板选 Vite、基础色 neutral）：
 
 ```bash
-git add module/webroot/index.html scripts/check-webui.mjs module/webroot/vendor 2>/dev/null
-git commit -m "feat: KSU WebUI for config and daemon control"
+npx shadcn@latest init
+npx shadcn@latest add button input label card badge sonner
 ```
+
+Expected: `webui/components.json` 生成；`webui/src/components/ui/` 下出现 `button.tsx`、`input.tsx`、`label.tsx`、`card.tsx`、`badge.tsx`、`sonner.tsx`。
+
+- [ ] **Step 16: 写失败的 DOM 测试：页面契约（先于实现 App）**
+
+`webui/tests/app.test.tsx`：
+
+```tsx
+import { describe, it, expect, afterEach } from "vitest";
+import { render, screen } from "@testing-library/react";
+import "@testing-library/jest-dom/vitest";
+import App from "../src/App";
+import { SEQUENCES } from "../src/lib/config";
+
+afterEach(() => {
+  delete (globalThis as { ksu?: unknown }).ksu;
+});
+
+describe("App DOM contract", () => {
+  it("shows the root warning", () => {
+    render(<App />);
+    expect(document.querySelector('[data-test="warning-root"]')).toBeInTheDocument();
+  });
+
+  it("shows the non-KSU banner when no ksu bridge exists", () => {
+    render(<App />);
+    expect(document.querySelector('[data-test="non-ksu-banner"]')).toBeInTheDocument();
+  });
+
+  it("renders exactly 14 binding inputs with stable data-test ids", () => {
+    render(<App />);
+    for (const s of SEQUENCES) {
+      expect(document.querySelector(`[data-test="binding-${s}"]`)).toBeInTheDocument();
+    }
+    expect(document.querySelectorAll('[data-test^="binding-"]')).toHaveLength(14);
+  });
+
+  it("renders the daemon toggle and log refresh controls", () => {
+    render(<App />);
+    expect(document.querySelector('[data-test="daemon-toggle"]')).toBeInTheDocument();
+    expect(document.querySelector('[data-test="log-refresh"]')).toBeInTheDocument();
+  });
+});
+```
+
+- [ ] **Step 17: 运行，确认失败**
+
+Run: `cd webui && npx vitest run tests/app.test.tsx`
+Expected: FAIL，报 `Cannot find module '../src/App'`。
+
+- [ ] **Step 18: 实现 `App.tsx` 与子组件，使 DOM 契约测试通过**
+
+实现要点：
+- 顶部 `Card` 渲染警告，属性 `data-test="warning-root"`，文字「命令以 root 执行，无沙箱。请勿输入不信任的命令。」
+- 非 KSU 时渲染 `data-test="non-ksu-banner"`，文字「非 KSU 环境，仅显示界面，无法读写配置或执行命令」，且禁用所有写操作按钮。
+- 参数区：两个 `Input type="number"`（`min=100 max=800 step=1`），用 `validateTiming` 校验，非法时用 Sonner 的 `toast.error` 提示。
+- 绑定区：14 行，每行一个 `Label` + `Input`，`data-test="binding-<seq>"`。
+- 保存按钮：调用 `runShell` 写配置（见 Task 7 的写入协议），成功后 `toast.success`，失败 `toast.error`。
+- 守护进程按钮 `data-test="daemon-toggle"`：读取 `daemon.pid` 判断状态，启动或停止。成功或失败都用 Sonner 提示。
+- `Toaster` 挂在根部。
+- 写配置协议：`runShell(\`echo '${base64}' | base64 -d > /data/adb/modules/oplus-sidekey/config.conf && kill -HUP $(cat /data/adb/modules/oplus-sidekey/daemon.pid 2>/dev/null) 2>/dev/null; echo ok\`)`。base64 仅含 `A-Za-z0-9+/=`，单引号包裹安全。
+
+- [ ] **Step 19: 运行，确认 DOM 契约测试通过**
+
+Run: `cd webui && npx vitest run`
+Expected: 全部 PASS。
+
+- [ ] **Step 20: 写失败测试：日志面板手动刷新（先于实现）**
+
+在 `webui/tests/app.test.tsx` 追加：
+
+```tsx
+import { fireEvent, waitFor } from "@testing-library/react";
+
+describe("log panel", () => {
+  it("does not read logs on mount, only on manual refresh", async () => {
+    let calls = 0;
+    (globalThis as { ksu?: unknown }).ksu = {
+      exec: (_c: string, _o: string, cb: string) => {
+        calls++;
+        (globalThis as Record<string, unknown>)[cb]?.(0, "", "");
+      },
+    };
+    render(<App />);
+    expect(calls).toBe(0);
+    fireEvent.click(document.querySelector('[data-test="log-refresh"]') as HTMLElement);
+    await waitFor(() => expect(calls).toBeGreaterThan(0));
+  });
+});
+```
+
+Run: `cd webui && npx vitest run tests/app.test.tsx`
+Expected: FAIL（刷新逻辑尚未实现，或 mount 时即有调用）。
+
+- [ ] **Step 21: 实现日志面板，使其通过**
+
+`LogPanel` 只在点击 `log-refresh` 时调用 `runShell` 读取：`tail -n 200 <log.txt>` 与 `tail -n 200 <events.jsonl>`，分别交给 `parseExplainLog` 与 `parseEventsJsonl`，渲染到 `data-test="log-explain"` 与 `data-test="log-events"`。挂载时不读取。
+
+- [ ] **Step 22: 运行全部测试**
+
+Run: `cd webui && npx vitest run`
+Expected: 全部 PASS。
+
+- [ ] **Step 23: 构建产物并检查**
+
+Run: `cd webui && npm run build`
+Expected: 产物写入 `module/webroot/`，包含 `index.html` 与 `assets/`。
+
+检查 `module/webroot/index.html` 中的资源引用是相对路径（`./assets/`），且 `module/webroot/assets/` 中的 CSS 不包含 `@import`（已被打包展开）。
+
+- [ ] **Step 24: 检查构建产物 LF 与 chrome111 目标**
+
+Run（PowerShell）:
+
+```powershell
+Get-ChildItem module/webroot -Recurse -File | ForEach-Object { $b=[IO.File]::ReadAllBytes($_.FullName); if ($b -contains 13) { "CRLF: " + $_.FullName } }
+```
+
+Expected: 无输出（产物无 CRLF）。若有 CRLF，检查 `.gitattributes` 与 `vite.config.ts` 的 `build.target`。
+
+- [ ] **Step 25: 提交**
+
+```bash
+git add webui module/webroot .gitignore
+git commit -m "feat: React WebUI with Tailwind v4, shadcn, Sonner, and log panels"
+```
+
+注意：`webui/node_modules/` 与 `webui/dist/` 必须加入 `.gitignore`，不提交依赖。
 
 ---
 

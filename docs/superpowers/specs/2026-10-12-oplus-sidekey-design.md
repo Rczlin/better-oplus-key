@@ -85,13 +85,23 @@ window_ms=300
 
 - 所有 shell 脚本（`service.sh`、`uninstall.sh`、`customize.sh`）必须为 LF 换行。CRLF 会导致设备上执行失败。本仓库 `core.autocrlf=true`，提交和检出时需注意。
 
-**KSU WebUI** `webroot/index.html`
+**KSU WebUI**（源码位于 `webui/`，构建产物输出到 `module/webroot/`）
 
-- 使用 `kernelsu` 库的 `exec` 读写配置、启停守护进程、查看日志。
-- 写配置时将内容以 base64 传入 shell，避免命令注入。
+- 技术栈：Vite + React + TypeScript + Tailwind CSS v4 + shadcn/ui + Sonner（通知）。
+- 构建目标 `chrome111`，与 Tailwind v4 的最低浏览器要求一致。用户已确认 WebView 版本 ≥ 111（自报，未在真机核实具体版本）。
+- `base: './'`，保证静态资源路径相对可用。
+- 运行时依赖 `kernelsu@3.0.2`，由 Vite 打包进产物，不依赖远程 CDN。
+- 非 KSU 环境（全局 `ksu` 不存在）：页面显示「非 KSU 环境」提示，不发起 exec。
+- 功能：配置编辑（两个时间参数 100–800ms，14 个序列各绑定一条命令）、启停守护进程、日志面板。
+- 写配置时将内容以 base64 传入 shell，避免命令注入。base64 字符集仅含 `A-Za-z0-9+/=`，单引号包裹安全。
+- 保存后向守护进程发送 `SIGHUP` 热加载，无需重启守护进程。
 - 界面明确提示：命令以 root 执行，无沙箱。
 
-**日志** `$MODDIR/log.txt`：记录启动、设备扫描结果、序列结束、命令退出码、解析错误。
+**日志**（两份，位于模块目录内，面板为手动刷新，不做实时流）
+
+- `$MODDIR/log.txt`：解释日志，人类可读，每行一条。内容包括：守护进程启动、设备扫描结果、每个按压序列的解释（例如「序列 `00`（单击单击）→ 执行 `echo double`，退出码 0」）、无绑定丢弃、解析错误。
+- `$MODDIR/events.jsonl`：原始结构化记录。每个按键边沿一行 JSON：`{"wall_ms":<墙钟毫秒>,"mono_ms":<单调毫秒>,"edge":"down"|"up","code":735}`。
+- 大小上限：两份日志各 512 KiB。超过上限时保留后半部分（截尾），防止占满 `/data`。此上限是我为防止日志无限增长而定的默认值，可调整。
 
 ## 5. 数据流
 
