@@ -61,7 +61,7 @@ better-oplus-key/                          (仓库根)
 ├── third_party/
 │   └── libevdev/                           Task 0（git submodule 或 vendored 源码，见 Task 0）
 ├── scripts/
-│   ├── build-daemon.sh                     Task 5
+│   ├── build-daemon.ps1                    Task 5
 │   ├── test-host.sh                        Task 1
 │   └── package-module.sh                   Task 8
 └── docs/superpowers/{specs,plans}/
@@ -787,15 +787,22 @@ git commit -m "feat: input device scan by keycode capability"
 
 **Files:**
 - Create: `daemon/src/main.c`
-- Create: `scripts/build-daemon.sh`
+- Create: `scripts/build-daemon.ps1`
 - Modify: `daemon/CMakeLists.txt`（加入 NDK 目标，与主机目标分开）
 
 **Interfaces:**
 - Consumes: `sidekey_fsm.h`（Task 2）、`sidekey_config.h`（Task 3）、`sidekey_scan.h`（Task 4）
 - Produces: 可执行文件 `bin/oplus-sidekey`（arm64-v8a，Android API 29+），命令行 `oplus-sidekey <moddir>`
 
+**日志契约（必须与 Task 7 的 WebUI 解析一致）：**
+- `<moddir>/log.txt`：每行 `YYYY-MM-DD HH:MM:SS <LEVEL> <message>`，`LEVEL` 为 `INFO|WARN|ERROR`。
+- 序列解释行：message 固定为 `seq=<0|1 串> action=<命令或 none> result=<退出码或 dropped>`。例：`seq=00 action=echo double result=0`。
+- `<moddir>/events.jsonl`：每个按键边沿一行 `{"wall_ms":<墙钟毫秒>,"mono_ms":<单调毫秒>,"edge":"down"|"up","code":<键码>}`。
+- 两份日志各上限 512 KiB。超过上限时，保留后半部分（截尾）。截尾操作在写入前检查文件大小，超限则把文件后半部分搬回开头后继续追加。
+
 主循环职责：
 1. 读取 `<moddir>/config.conf`；失败则写日志并退出（不 grab）。
+
 2. `sidekey_scan_find("/dev/input", keycode, ...)`；未找到则写日志并退出（不 grab）。
 3. `open` 设备，`EVIOCGRAB` 独占。失败则写日志并退出。
 4. 写 `<moddir>/daemon.pid`。
@@ -803,74 +810,108 @@ git commit -m "feat: input device scan by keycode capability"
 6. 序列完成回调：查绑定，命中则 `fork`，子进程 `execl("/system/bin/sh", "sh", "-c", cmd, NULL)`，父进程不阻塞、记录退出码（用 `SIGCHLD` + `waitpid(WNOHANG)`）。
 7. 收到 `SIGTERM` 时释放 grab、删除 pid 文件、退出。
 
-- [ ] **Step 1: 写 NDK 构建脚本并先让它失败**
+- [ ] **Step 1: 确定 NDK 构建路径（已核实，结论固定）**
 
-`scripts/build-daemon.sh`（在 WSL 中运行，NDK 通过 Windows 路径访问）：
+已核实：NDK `28.2.13676358` 的 `toolchains/llvm/prebuilt/` 只有 `windows-x86_64`，`clang.exe` 与 `build/cmake/android.toolchain.cmake` 均存在。Windows 侧 cmake 3.28.1、ninja 1.11.1 可用。
 
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-NDK="${NDK:-/mnt/l/CodeProgram/Android/Sdk/ndk/28.2.13676358}"
-BUILD="$ROOT/build/android-arm64"
-cmake -S "$ROOT/daemon" -B "$BUILD" -G Ninja \
-  -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
-  -DANDROID_ABI=arm64-v8a \
-  -DANDROID_PLATFORM=android-29 \
-  -DCMAKE_BUILD_TYPE=Release
-cmake --build "$BUILD" --target oplus-sidekey
-mkdir -p "$ROOT/module/bin"
-cp "$BUILD/oplus-sidekey" "$ROOT/module/bin/oplus-sidekey"
-"$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip" "$ROOT/module/bin/oplus-sidekey" || true
+因此**构建在 PowerShell 中完成**，不使用 WSL。构建脚本为 `scripts/build-daemon.ps1`，不再使用 `build-daemon.sh`。
+
+- [ ] **Step 2: 写 `scripts/build-daemon.ps1`（先让它失败：目标源文件尚不存在）**
+
+```powershell
+$ErrorActionPreference = "Stop"
+$Root = Split-Path -Parent $PSScriptRoot
+$Ndk  = if ($env:NDK) { $env:NDK } else { "L:\CodeProgram\Android\Sdk\ndk\28.2.13676358" }
+$Cmake = "L:\CodeProgram\Embedded\STM32CubeCLT_1.19.0\CMake\bin\cmake.exe"
+$Ninja = "L:\CodeProgram\Embedded\STM32CubeCLT_1.19.0\Ninja\bin\ninja.exe"
+$Build = Join-Path $Root "build\android-arm64"
+$Toolchain = Join-Path $Ndk "build\cmake\android.toolchain.cmake"
+& $Cmake -S (Join-Path $Root "daemon") -B $Build -G Ninja `
+  "-DCMAKE_MAKE_PROGRAM=$Ninja" `
+  "-DCMAKE_TOOLCHAIN_FILE=$Toolchain" `
+  -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 -DCMAKE_BUILD_TYPE=Release
+if ($LASTEXITCODE -ne 0) { throw "cmake configure failed" }
+& $Cmake --build $Build --target oplus-sidekey
+if ($LASTEXITCODE -ne 0) { throw "cmake build failed" }
+$Out = Join-Path $Root "module\bin"
+New-Item -ItemType Directory -Force -Path $Out | Out-Null
+Copy-Item (Join-Path $Build "oplus-sidekey") (Join-Path $Out "oplus-sidekey") -Force
 ```
 
-注意：`NDK` 的路径在 WSL 中是 `/mnt/l/...`。`prebuilt` 目录名在 Windows 上是 `windows-x86_64`，WSL 下若调用的是 Windows 版 clang 则路径需改。**执行前先确认**：在 WSL 中运行 `ls /mnt/l/CodeProgram/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/`，若只有 `windows-x86_64`，则改用 Windows 版 clang，此时应在 PowerShell 中构建而非 WSL。这一点在 Step 2 验证时决定。
+Run: `powershell -File scripts/build-daemon.ps1`
+Expected: FAIL（`daemon/CMakeLists.txt` 尚无 `oplus-sidekey` 目标，或 `main.c` 缺失）。失败原因必须是目标缺失，不是工具链路径错误。
 
-- [ ] **Step 2: 验证 NDK 工具链在 WSL 中是否可用**
+- [ ] **Step 3: 写参数解析的失败测试（主机可测，不依赖设备）**
 
-Run: `ls /mnt/l/CodeProgram/Android/Sdk/ndk/28.2.13676358/toolchains/llvm/prebuilt/`
-Expected:
-- 若输出 `linux-x86_64`：使用 WSL 构建，脚本无需改动。
-- 若只有 `windows-x86_64`：NDK 的 clang 是 Windows 可执行文件，WSL 无法直接用于构建。此时改为 PowerShell 构建，把 `build-daemon.sh` 改写为 `build-daemon.ps1`，Task 5 的其余步骤不变。
+把 `main` 的参数校验拆成纯函数 `sidekey_parse_args(argc, argv, moddir_out, len)`，放在 `daemon/src/sidekey_args.c`。主机测试直接调用它，不用 `system()`，避免依赖 shell 与返回值格式。
 
-**不要在未确认前继续。**
-
-- [ ] **Step 3: 写 `main.c` 的失败烟雾测试（主机编译，不运行设备逻辑）**
-
-先写一个只检查「缺少参数时返回非 0」的最小测试，确保入口存在：
+`daemon/tests/test_args.c`：
 
 ```c
-/* daemon/tests/test_main_args.c */
 #include <stdio.h>
-#include <stdlib.h>
+#include <string.h>
+#include "sidekey_args.h"
+
+static int failures = 0;
+#define CHECK(cond) do { if (!(cond)) { \
+    fprintf(stderr, "FAIL %s:%d: %s\n", __FILE__, __LINE__, #cond); failures++; } } while (0)
+
+static void test_missing_arg_is_error(void) {
+    char dir[256];
+    char *argv[] = {"oplus-sidekey", NULL};
+    CHECK(sidekey_parse_args(1, argv, dir, sizeof(dir)) == -1);
+}
+
+static void test_moddir_returned(void) {
+    char dir[256];
+    char *argv[] = {"oplus-sidekey", "/data/adb/modules/oplus-sidekey", NULL};
+    CHECK(sidekey_parse_args(2, argv, dir, sizeof(dir)) == 0);
+    CHECK(strcmp(dir, "/data/adb/modules/oplus-sidekey") == 0);
+}
+
+static void test_overlong_path_rejected(void) {
+    char dir[8];
+    char *argv[] = {"oplus-sidekey", "/data/adb/modules/oplus-sidekey", NULL};
+    CHECK(sidekey_parse_args(2, argv, dir, sizeof(dir)) == -1);
+}
+
 int main(void) {
-    /* 由 CMake 测试命令调用 oplus-sidekey 无参数，期望退出码 2 */
-    return system("./oplus-sidekey >/dev/null 2>&1") == 0x0200 ? 0 : 1;
+    test_missing_arg_is_error();
+    test_moddir_returned();
+    test_overlong_path_rejected();
+    if (failures) { fprintf(stderr, "%d failure(s)\n", failures); return 1; }
+    printf("test_args: all passed\n");
+    return 0;
 }
 ```
 
-此测试需要主机版 `oplus-sidekey`。在 CMake 中为主机构建一个 `oplus-sidekey-host` 目标用于测试。
+Run: `bash scripts/test-host.sh`
+Expected: FAIL（`sidekey_args.c` 尚不存在，CMake 配置失败）。
+
+- [ ] **Step 3a: 实现 `sidekey_args`，使测试通过**
+
+`daemon/include/sidekey_args.h` 声明 `int sidekey_parse_args(int argc, char **argv, char *dir, size_t dir_len);`；实现：`argc < 2` 返回 -1；路径长度 ≥ `dir_len` 返回 -1；否则复制并返回 0。
 
 Run: `bash scripts/test-host.sh`
-Expected: FAIL（`main.c` 尚未存在）。
+Expected: `test_args: all passed`。
 
 - [ ] **Step 4: 实现 `main.c`**
 
 按「主循环职责」1–7 实现。关键约束：
 - 所有路径通过 `<moddir>` 拼接，不写死 `/data/adb/...`。
-- 日志追加到 `<moddir>/log.txt`，每行带时间戳（`time` 单调或墙钟均可，只用于排查）。
-- `EVIOCGRAB` 失败、节点未找到、配置致命错误：均写日志后 `exit(1)`，不 grab。
-- 参数缺失：`exit(2)`。
+- 日志严格遵守上文「日志契约」：`log.txt` 用 `YYYY-MM-DD HH:MM:SS LEVEL message` 格式；序列完成时写入 `seq=... action=... result=...` 解释行；每个按键边沿同时追加一行到 `events.jsonl`。
+- `EVIOCGRAB` 失败、节点未找到、配置致命错误：均写 `ERROR` 日志后 `exit(1)`，不 grab。
+- 参数缺失：`exit(2)`，由 `sidekey_parse_args` 判定。
 - 不调用 `setprop`（spec 要求：post-fs-data 阶段禁止，此处 service 阶段也不需要）。
 
 - [ ] **Step 5: 运行主机测试，确认参数校验通过**
 
 Run: `bash scripts/test-host.sh`
-Expected: `test_main_args` PASS。
+Expected: `test_args: all passed`。
 
 - [ ] **Step 6: 运行 NDK 交叉编译**
 
-Run: `bash scripts/build-daemon.sh`（或 Step 2 决定的 PowerShell 版本）
+Run: `powershell -File scripts/build-daemon.ps1`
 Expected: `module/bin/oplus-sidekey` 生成，`file` 显示 `ELF 64-bit LSB executable, ARM aarch64`。
 
 验证产物架构：
@@ -881,7 +922,7 @@ Expected: 包含 `ARM aarch64`。
 - [ ] **Step 7: 提交**
 
 ```bash
-git add daemon/src/main.c daemon/CMakeLists.txt scripts/build-daemon.sh module/bin/oplus-sidekey
+git add daemon/src/main.c daemon/src/sidekey_args.c daemon/include/sidekey_args.h daemon/tests/test_args.c daemon/CMakeLists.txt scripts/build-daemon.ps1 module/bin/oplus-sidekey
 git commit -m "feat: daemon main loop and arm64 NDK build"
 ```
 
@@ -1533,7 +1574,7 @@ Expected: 输出 `stopped ok`。
 - WSL（Ubuntu-26.04）当前缺失：`gcc`、`cmake`、`ninja`、`meson`、`pkg-config`、`zip`、`unzip`。仅有 `python3`。
   - 需用户在 WSL 中安装：`sudo apt-get install -y build-essential cmake ninja-build meson pkg-config zip unzip`
   - 安装前不执行 Task 1，否则 `scripts/test-host.sh` 必然失败。
-- NDK `28.2.13676358` 的 `toolchains/llvm/prebuilt/` 只有 `windows-x86_64`，**WSL 中的 clang 无法直接使用**。Task 5 因此默认改用 PowerShell 构建（即 Task 5 Step 2 的第二个分支），`build-daemon.sh` 需替换为 `build-daemon.ps1`。
+- NDK `28.2.13676358` 的 `toolchains/llvm/prebuilt/` 只有 `windows-x86_64`，**WSL 中的 clang 无法直接使用**。Task 5 因此改用 PowerShell 构建，脚本为 `build-daemon.ps1`。该结论已核实。
 - `kernelsu@3.0.2` 的 `index.js` 为 ES module，导出 `exec`，依赖全局 `ksu`。Task 7 可直接复制为 `module/webroot/vendor/kernelsu.js` 引用，无需 Node 内置模块。
 
 ## 真机验证清单（由用户执行，不在自动化范围内）
