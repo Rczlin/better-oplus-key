@@ -1,3 +1,4 @@
 build/
 dist/
 *.zip
+webui/node_modules/
