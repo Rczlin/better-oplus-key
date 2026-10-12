@@ -61,6 +61,17 @@ static void test_crlf_tolerant(void) {
     CHECK(strcmp(c.bindings[0].cmd, "echo x") == 0);
 }
 
+/* 热加载失败时必须保留旧配置：解析失败不得破坏调用方已有的结构体。 */
+static void test_failed_parse_preserves_previous_config(void) {
+    sidekey_config_t c;
+    CHECK(sidekey_config_parse("keycode=735\n0=echo old\n", &c) == 0);
+    CHECK(c.n_bindings == 1);
+
+    CHECK(sidekey_config_parse("long_press_ms=notanumber\n", &c) == -1);
+    CHECK(c.n_bindings == 1);
+    CHECK(strcmp(c.bindings[0].cmd, "echo old") == 0);
+}
+
 int main(void) {
     test_defaults_and_bindings();
     test_value_containing_equals();
@@ -68,6 +79,7 @@ int main(void) {
     test_missing_keycode_uses_default();
     test_bad_keycode_is_fatal();
     test_crlf_tolerant();
+    test_failed_parse_preserves_previous_config();
     if (failures) { fprintf(stderr, "%d failure(s)\n", failures); return 1; }
     printf("test_config: all passed\n");
     return 0;

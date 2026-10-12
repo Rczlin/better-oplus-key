@@ -19,7 +19,18 @@ static int parse_int(const char *s, int *out) {
     return 1;
 }
 
+static int parse_into(const char *text, sidekey_config_t *out);
+
+/* 对外接口：先解析到临时结构体，成功后才覆盖调用方的结构体。
+   这样热加载失败时旧配置保持不变（见 test_failed_parse_preserves_previous_config）。 */
 int sidekey_config_parse(const char *text, sidekey_config_t *out) {
+    sidekey_config_t tmp;
+    if (parse_into(text, &tmp) != 0) return -1;
+    *out = tmp;
+    return 0;
+}
+
+static int parse_into(const char *text, sidekey_config_t *out) {
     memset(out, 0, sizeof(*out));
     out->keycode = 735;
     out->fsm.long_press_ms = 300;
