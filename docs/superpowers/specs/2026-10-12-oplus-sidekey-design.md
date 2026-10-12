@@ -69,6 +69,10 @@ window_ms=300
 - 解析时按第一个 `=` 切分，值为完整的命令串。
 - 解析失败的行跳过并写日志。
 
+**文件格式要求**
+
+- 所有 shell 脚本（`service.sh`、`uninstall.sh`、`customize.sh`）必须为 LF 换行。CRLF 会导致设备上执行失败。本仓库 `core.autocrlf=true`，提交和检出时需注意。
+
 **KSU WebUI** `webroot/index.html`
 
 - 使用 `kernelsu` 库的 `exec` 读写配置、启停守护进程、查看日志。
@@ -100,8 +104,11 @@ window_ms=300
 
 要求：卸载后不留下任何残留。
 
-- 模块自身的全部文件（脚本、配置、pid、日志）都位于 `/data/adb/modules/oplus-sidekey/` 内。KernelSU 卸载模块时会删除该目录。
-- 守护进程运行中卸载不会自动结束。`uninstall.sh` 读取 `daemon.pid` 并结束守护进程，使独占释放。
+- 模块自身的全部文件（脚本、配置、pid、日志）都位于 `/data/adb/modules/oplus-sidekey/` 内。
+- 已由官方文档确认：卸载时 KernelSU 会执行模块的 `uninstall.sh`（[Module guide](https://kernelsu.org/guide/module.html)）。
+- 未由官方文档确认：卸载后 KernelSU 是否删除整个模块目录。需真机验证（见第 9 节）。
+- 守护进程运行中卸载不会自动结束。`uninstall.sh` 先读取 `daemon.pid` 结束进程；pid 文件缺失或失效时，再按可执行文件路径（位于 `/data/adb/modules/oplus-sidekey/` 下）查找并结束，避免独占残留到重启。
+- KernelSU 的模块配置系统（`ksud module config`）把数据存放在 `/data/adb/ksu/module_configs/<id>/`，卸载时会清除（[Module Configuration](https://kernelsu.org/guide/module-config.html)）。本设计不使用该系统，配置只放在模块目录内。
 - 不使用 `initrc/`、`sepolicy.rule`、`system/` 目录，因此不产生需要单独清理的系统级残留。
 - 不写模块目录以外的位置：不使用 `/data/adb/oplus-sidekey`、`/data/local/tmp` 等。
 - 边界：用户在配置中写的 shell 命令自身产生的副作用，不在模块清理范围内。
