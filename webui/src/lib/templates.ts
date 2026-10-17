@@ -56,15 +56,18 @@ export function serializeTemplates(templates: ShellTemplate[]): string {
   return text;
 }
 
-export function mergeCommands(templates: ShellTemplate[], commands: string[], now: number): ShellTemplate[] {
+export function mergeCommands(templates: ShellTemplate[], commands: string[], now: number, nameFor?: (command: string) => string | undefined, skip?: (command: string) => boolean): ShellTemplate[] {
   const merged = dedupe(templates.map((item, index) => validateTemplate(item, index))).map(item => ({ ...item }));
   const byCommand = new Map(merged.map(item => [item.command, item]));
   for (const command of commands) {
     if (!validateCommand(command)) throw new Error(`命令须为单行，最多 ${MAX_COMMAND_BYTES} 个 UTF-8 字节，不能含 NUL`);
     const existing = byCommand.get(command);
     if (existing) existing.updatedAt = now;
+    else if (skip?.(command)) continue;
     else {
-      const item = { id: newId(), name: generatedName(merged.length), command, updatedAt: now };
+      const suggested = nameFor?.(command);
+      const name = suggested && !/[\r\n\0]/.test(suggested) && encoder.encode(suggested).length <= MAX_NAME_BYTES ? suggested : generatedName(merged.length);
+      const item = { id: newId(), name, command, updatedAt: now };
       merged.push(item);
       byCommand.set(command, item);
     }

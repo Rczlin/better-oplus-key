@@ -1,8 +1,10 @@
 import { Check, CircleAlert, CircleDashed } from "lucide-react";
 import { CommandPreview } from "./CommandPreview";
 import { formatExplainRow, type ExplainRow } from "@/lib/log";
+import { describeCommand } from "@/lib/presets";
+import type { ShellTemplate } from "@/lib/templates";
 
-export function LogRows({ rows, logsRead, onOpen }: { rows: ExplainRow[]; logsRead: boolean; onOpen?: (row: ExplainRow) => void }) {
+export function LogRows({ rows, logsRead, onOpen, templates = [] }: { rows: ExplainRow[]; logsRead: boolean; onOpen?: (row: ExplainRow) => void; templates?: ShellTemplate[] }) {
   return <div data-testid="log-explain" className="grid min-w-0 max-w-full gap-3">
     {rows.length ? rows.map((row, i) => {
       const { resultLabel, summary } = formatExplainRow(row);
@@ -12,6 +14,8 @@ export function LogRows({ rows, logsRead, onOpen }: { rows: ExplainRow[]; logsRe
         <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
           <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 ${success ? "bg-emerald-400/10 text-emerald-300" : failure ? "bg-red-400/10 text-red-300" : "bg-amber-400/10 text-amber-200"}`}><Icon className="size-3" />{resultLabel}</span>
           <time className="text-muted-foreground">{row.time}</time>
+          {row.action && row.action !== "none" && <span data-testid="log-action-name" className="rounded-full bg-primary/10 px-2 py-1 text-primary [overflow-wrap:anywhere]">{describeCommand(row.action, templates).name}</span>}
+          {row.result === "dropped" && <span className="text-muted-foreground">这个按法没有绑定动作</span>}
         </div>
         {summary.length > 140 ? <details className="my-3 min-w-0 text-sm leading-6"><summary className="cursor-pointer rounded [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-ring">{summary.slice(0, 140)}… <span className="text-xs text-primary">展开完整记录</span></summary><p className="mt-2 max-h-48 min-w-0 overflow-auto [overflow-wrap:anywhere]">{summary}</p></details> : <p className="my-3 min-w-0 text-sm leading-6 [overflow-wrap:anywhere]">{summary}</p>}
         {row.action && row.action !== "none" && <CommandPreview command={row.action} />}

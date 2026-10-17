@@ -67,3 +67,12 @@ describe("shell templates", () => {
     expect(removeTemplate([template(), template({ id: "id-2" })], "id-1")).toEqual([template({ id: "id-2" })]);
   });
 });
+
+describe("named automatic collection", () => {
+  it("uses a suggested display name for new commands and keeps existing names", () => {
+    const merged = mergeCommands([template()], ["input keyevent 3", "input keyevent 120", "echo x"], 5,
+      command => command === "input keyevent 120" ? "截屏" : command === "input keyevent 3" ? "不应覆盖" : undefined);
+    expect(merged.map(t => t.name)).toEqual(["返回桌面", "截屏", "模板 3"]);
+    expect(mergeCommands([], ["echo y"], 1, () => "a\nb")[0].name).toBe("模板 1");
+  });
+});

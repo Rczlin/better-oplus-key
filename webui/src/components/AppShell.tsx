@@ -6,7 +6,7 @@ export type ViewId = "overview" | "bindings" | "templates" | "diagnostics";
 const views = [
   { id: "overview", label: "概览", icon: LayoutDashboard },
   { id: "bindings", label: "绑定", icon: Keyboard },
-  { id: "templates", label: "Shell 模板", icon: Terminal },
+  { id: "templates", label: "模板库", icon: Terminal },
   { id: "diagnostics", label: "诊断", icon: Activity },
 ] as const;
 

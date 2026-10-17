@@ -1,6 +1,6 @@
 id=oplus-sidekey
 name=OnePlus Side Key
-version=0.1.0
-versionCode=1
+version=0.3.0
+versionCode=3
 author=rlin
-description=独占接管 OnePlus Ace 6 侧键，按单击/长按序列执行 shell
+description=接管 OnePlus Ace 6 侧键：单击、双击、长按等组合一键执行截屏、播放控制、打开应用等动作，内置常用模板，可在 WebUI 中点选配置

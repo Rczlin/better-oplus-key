@@ -166,7 +166,7 @@ describe("navigation and persistent templates", () => {
   it("preserves unsaved binding and timing drafts while changing all four views", async () => {
     bridge(); render(<App />); await loaded();
     fireEvent.change(screen.getByLabelText("长按时长（毫秒）"), { target: { value: "500" } });
-    navigate("Shell 模板"); expect(screen.getByRole("heading", { name: "Shell 模板" })).toBeInTheDocument();
+    navigate("模板库"); expect(screen.getByRole("heading", { name: "模板库" })).toBeInTheDocument();
     navigate("诊断"); expect(screen.getByRole("tab", { name: "解释记录" })).toBeInTheDocument();
     navigate("概览"); expect(screen.getByRole("heading", { name: "侧键控制台" })).toBeInTheDocument();
     navigate("绑定"); expect(screen.getByLabelText("长按时长（毫秒）")).toHaveValue(500);
@@ -207,10 +207,10 @@ describe("navigation and persistent templates", () => {
         else reply(cb, 0, JSON.stringify(current));
       } else reply(cb, 0, shell === configRead ? persistedConfig : "stopped");
     }, true);
-    render(<App />); await loaded(); navigate("Shell 模板"); click("应用到绑定");
+    render(<App />); await loaded(); navigate("模板库"); click("应用到绑定");
     expect(screen.getByLabelText("Shell 命令")).toHaveValue(template.command);
     click("长按"); click("添加绑定"); expect(screen.getByTestId("save-state")).toHaveTextContent("未保存");
-    navigate("Shell 模板"); click("编辑模板");
+    navigate("模板库"); click("编辑模板");
     fireEvent.change(screen.getByLabelText("模板名称"), { target: { value: "我的桌面" } }); click("保存模板");
     await screen.findByText("我的桌面"); expect(current[0].name).toBe("我的桌面");
     click("删除模板"); await waitFor(() => expect(current).toEqual([]));
@@ -224,7 +224,7 @@ describe("navigation and persistent templates", () => {
         reply(cb, 0, ++reads === 1 ? JSON.stringify([template]) : "{");
       } else reply(cb, 0, shell === configRead ? persistedConfig : "stopped");
     }, true);
-    render(<App />); await loaded(); navigate("Shell 模板"); click("重新读取模板");
+    render(<App />); await loaded(); navigate("模板库"); click("重新读取模板");
     await screen.findByText(/模板读取失败/); expect(screen.getByText("返回桌面")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "删除模板" })).toBeDisabled(); expect(writes).toBe(0);
   });
@@ -237,7 +237,7 @@ describe("navigation and persistent templates", () => {
         else reply(cb, 0, JSON.stringify([template]));
       } else reply(cb, 0, shell === configRead ? persistedConfig : "stopped");
     }, true);
-    render(<App />); await loaded(); navigate("Shell 模板"); click("重新读取模板");
+    render(<App />); await loaded(); navigate("模板库"); click("重新读取模板");
     await screen.findByText(/模板读取失败/);
     expect(screen.getByText("返回桌面")).toBeInTheDocument();
     for (const name of ["编辑模板", "删除模板", "应用到绑定"]) expect(screen.getByRole("button", { name })).toBeDisabled();
@@ -256,14 +256,14 @@ describe("navigation and persistent templates", () => {
     }, true);
     render(<App />); await loaded(); click("保存配置");
     await waitFor(() => expect(templateWrites).toBe(1));
-    navigate("Shell 模板"); expect(screen.queryByText(/模板读取失败/)).toBeNull();
+    navigate("模板库"); expect(screen.queryByText(/模板读取失败/)).toBeNull();
   });
   it("treats an existing zero-byte template file as a recoverable read error on first load", async () => {
     bridge((shell, cb) => {
       if (shell.includes("templates.json")) reply(cb, 0, "[]", "templates-empty");
       else reply(cb, 0, shell === configRead ? persistedConfig : "stopped");
     }, true);
-    render(<App />); await loaded(); navigate("Shell 模板");
+    render(<App />); await loaded(); navigate("模板库");
     expect(screen.getByText(/模板读取失败/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "编辑模板" })).toBeNull();
   });
