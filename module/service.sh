@@ -12,5 +12,9 @@ if [ -f "$MODDIR/daemon.pid" ]; then
 fi
 
 # 守护进程自己写 log.txt / events.jsonl（遵守日志契约）。
-# 这里只捕获它崩溃前的 stderr，写到独立文件，避免破坏日志格式。
-"$DAEMON" "$MODDIR" </dev/null >/dev/null 2>>"$MODDIR/daemon.stderr" &
+# 标准输入输出必须全部指向 /dev/null：绑定命令会继承这些 fd，
+# input/am/cmd/settings 等命令通过 binder 把 fd 交给 system_server；
+# 若 stderr 指向 /data/adb 下的文件，SELinux 会拒绝 system_server 使用它，
+# 命令报 “Failed transaction” 并以退出码 2 失败。
+rm -f "$MODDIR/daemon.stderr"
+"$DAEMON" "$MODDIR" </dev/null >/dev/null 2>&1 &

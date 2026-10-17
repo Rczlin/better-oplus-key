@@ -25,6 +25,9 @@
 #define PATH_MAX_LOCAL 256
 #define LOG_LIMIT (512L * 1024L)
 #define SHELL "/system/bin/sh"
+#ifndef SIDEKEY_NULL_DEVICE
+#define SIDEKEY_NULL_DEVICE "/dev/null"
+#endif
 
 static volatile sig_atomic_t g_reload = 0;
 static volatile sig_atomic_t g_stop = 0;
@@ -188,6 +191,21 @@ static int remember_inflight(pid_t pid, const char *seq, const char *action) {
     return -1;
 }
 
+/* 子进程执行命令前把 stdin/stdout/stderr 全部指向 /dev/null。
+   input/am/cmd/settings 等命令会通过 binder 把自身的标准 fd 交给 system_server；
+   继承到的 fd 若是 /data/adb 下的日志文件，SELinux 拒绝传递，命令报
+   “Failed transaction”并以退出码 2 失败。/dev/null 对所有域可用。 */
+static int redirect_child_stdio(void) {
+    int fd = open(SIDEKEY_NULL_DEVICE, O_RDWR | O_CLOEXEC);
+    if (fd < 0) return -1;
+    int rc = 0;
+    for (int target = 0; target <= 2; target++) {
+        if (dup2(fd, target) < 0) rc = -1;   /* dup2 结果不带 CLOEXEC */
+    }
+    if (fd > 2) close(fd);
+    return rc;
+}
+
 /* 序列完成回调：查绑定并派发。解释日志在子进程退出后写真实结果。 */
 static void on_sequence(const char *seq, int len, void *ctx) {
     (void)ctx;
@@ -216,6 +234,7 @@ static void on_sequence(const char *seq, int len, void *ctx) {
     pid_t pid = fork();
     if (pid == 0) {
         sigprocmask(SIG_SETMASK, &g_child_mask, NULL);
+        if (redirect_child_stdio() != 0) _exit(126);
         execl(SHELL, "sh", "-c", cmd, (char *)NULL);
         _exit(127);
     }

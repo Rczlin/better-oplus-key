@@ -47,6 +47,23 @@ int main(void) {
     int status;
     CHECK(waitpid(child, &status, 0) == child);
     CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+    /* 绑定命令的子进程不得继承指向模块目录文件的 stdio（否则 cmd/input 报 Failed transaction 退出码 2）。 */
+    child = fork();
+    CHECK(child >= 0);
+    if (child == 0) {
+        int log_fd = open(g_log_path, O_WRONLY | O_CREAT | O_APPEND, 0600);
+        if (log_fd < 0 || dup2(log_fd, 1) < 0 || dup2(log_fd, 2) < 0) _exit(20);
+        if (redirect_child_stdio() != 0) _exit(21);
+        struct stat null_st, fd_st;
+        if (stat("/dev/null", &null_st) != 0) _exit(22);
+        for (int fd = 0; fd <= 2; fd++) {
+            if (fstat(fd, &fd_st) != 0 || !S_ISCHR(fd_st.st_mode) || fd_st.st_rdev != null_st.st_rdev) _exit(23 + fd);
+            if (fcntl(fd, F_GETFD) & FD_CLOEXEC) _exit(26);
+        }
+        _exit(0);
+    }
+    CHECK(waitpid(child, &status, 0) == child);
+    CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
     struct sigaction sa = {0};
     sa.sa_handler = on_hup; sigaction(SIGHUP, &sa, NULL);
     sa.sa_handler = on_chld; sigaction(SIGCHLD, &sa, NULL);
