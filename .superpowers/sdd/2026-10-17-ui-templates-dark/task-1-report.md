@@ -14,4 +14,4 @@ The specification requires generated names when a template name is empty but doe
 ## Commit
 
 - `feat: add persistent shell template storage`
-- Commit: d9edd9e86bea419dc12af89629350dcbaec5c4fb
+- Commit: dbc000e72a03f3c831f84ef2c7ebc0578ee0a4a1
