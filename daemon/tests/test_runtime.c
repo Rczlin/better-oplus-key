@@ -9,16 +9,20 @@ static int failures = 0;
 
 static void test_lookup_bound_sequence(void) {
     sidekey_config_t c;
+    sidekey_config_init(&c);
     CHECK(sidekey_config_parse("0=echo single\n00=echo double\n", &c) == 0);
     const char *cmd = sidekey_runtime_lookup(&c, "00");
     CHECK(cmd != NULL);
     CHECK(strcmp(cmd, "echo double") == 0);
+    sidekey_config_destroy(&c);
 }
 
 static void test_lookup_unbound_returns_null(void) {
     sidekey_config_t c;
+    sidekey_config_init(&c);
     CHECK(sidekey_config_parse("0=echo single\n", &c) == 0);
     CHECK(sidekey_runtime_lookup(&c, "111") == NULL);
+    sidekey_config_destroy(&c);
 }
 
 static void test_event_line_format(void) {

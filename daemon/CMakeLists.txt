@@ -15,10 +15,15 @@ add_test(NAME fsm COMMAND test_fsm)
 
 add_library(sidekey_config STATIC src/sidekey_config.c)
 target_include_directories(sidekey_config PUBLIC include)
+target_include_directories(sidekey_config PRIVATE ../third_party/uthash)
 target_link_libraries(sidekey_config PUBLIC sidekey_fsm)
 add_executable(test_config tests/test_config.c)
 target_link_libraries(test_config PRIVATE sidekey_config)
 add_test(NAME config COMMAND test_config)
+
+add_executable(test_alloc tests/test_alloc.c)
+target_include_directories(test_alloc PRIVATE include ../third_party/uthash)
+add_test(NAME alloc COMMAND test_alloc)
 
 if(ANDROID)
   # NDK 交叉编译：直接编译 vendored libevdev 源码，不依赖主机 pkg-config。
@@ -61,6 +66,13 @@ else()
   target_link_libraries(LIBEVDEV_DEP INTERFACE PkgConfig::LIBEVDEV)
 endif()
 
+add_library(sidekey_input STATIC src/sidekey_input.c)
+target_include_directories(sidekey_input PUBLIC include)
+target_link_libraries(sidekey_input PUBLIC sidekey_fsm LIBEVDEV_DEP)
+add_executable(test_input tests/test_input.c)
+target_link_libraries(test_input PRIVATE sidekey_input)
+add_test(NAME input COMMAND test_input)
+
 add_library(sidekey_runtime STATIC src/sidekey_runtime.c)
 target_include_directories(sidekey_runtime PUBLIC include)
 target_link_libraries(sidekey_runtime PUBLIC sidekey_config sidekey_log)
@@ -87,10 +99,28 @@ add_executable(test_scan tests/test_scan.c)
 target_link_libraries(test_scan PRIVATE sidekey_scan)
 add_test(NAME scan COMMAND test_scan)
 
+add_executable(test_daemon_config tests/test_daemon_config.c)
+target_link_libraries(test_daemon_config PRIVATE
+  sidekey_args sidekey_config sidekey_fsm sidekey_log
+  sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
+add_test(NAME daemon_config COMMAND test_daemon_config)
+
+add_executable(test_daemon_lifecycle tests/test_daemon_lifecycle.c)
+target_link_libraries(test_daemon_lifecycle PRIVATE
+  sidekey_args sidekey_config sidekey_fsm sidekey_log
+  sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
+add_test(NAME daemon_lifecycle COMMAND test_daemon_lifecycle)
+
+add_executable(test_reload tests/test_reload.c)
+target_include_directories(test_reload PRIVATE ../third_party/uthash)
+target_link_libraries(test_reload PRIVATE
+  sidekey_args sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
+add_test(NAME reload COMMAND test_reload)
+
 # 守护进程可执行文件：仅在 NDK 交叉编译时生成（主机只跑单元测试）。
 if(ANDROID)
   add_executable(oplus-sidekey src/main.c)
   target_link_libraries(oplus-sidekey PRIVATE
     sidekey_args sidekey_config sidekey_fsm sidekey_log
-    sidekey_runtime sidekey_scan LIBEVDEV_DEP)
+    sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
 endif()

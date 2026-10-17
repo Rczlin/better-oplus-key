@@ -9,9 +9,8 @@ if [ -f "$MODDIR/daemon.pid" ]; then
   if [ -n "$OLD" ] && [ "$(readlink "/proc/$OLD/exe" 2>/dev/null)" = "$DAEMON" ]; then
     exit 0
   fi
-  rm -f "$MODDIR/daemon.pid"
 fi
 
 # 守护进程自己写 log.txt / events.jsonl（遵守日志契约）。
 # 这里只捕获它崩溃前的 stderr，写到独立文件，避免破坏日志格式。
-"$DAEMON" "$MODDIR" 2>>"$MODDIR/daemon.stderr" &
+"$DAEMON" "$MODDIR" </dev/null >/dev/null 2>>"$MODDIR/daemon.stderr" &

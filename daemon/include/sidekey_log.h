@@ -8,7 +8,7 @@ void sidekey_log_format_line(char *out, size_t out_len, const char *ts,
                              const char *level, const char *message);
 
 /* 格式化一条序列解释行：「<时间> INFO seq=<s> action=<a> result=<r>\n」。
-   action 为 NULL 时写 none；result < 0 时写 dropped，否则写退出码。 */
+   action 为 NULL 且 result=-1 时写 dropped，否则保留退出码（含执行失败负数）。 */
 void sidekey_log_format_seq(char *out, size_t out_len, const char *ts,
                             const char *seq, const char *action, int result);
 

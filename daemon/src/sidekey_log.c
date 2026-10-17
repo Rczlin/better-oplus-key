@@ -11,7 +11,7 @@ void sidekey_log_format_line(char *out, size_t out_len, const char *ts,
 void sidekey_log_format_seq(char *out, size_t out_len, const char *ts,
                             const char *seq, const char *action, int result) {
     char res[32];
-    if (result < 0) {
+    if (result == -1 && action == NULL) {
         snprintf(res, sizeof(res), "dropped");
     } else {
         snprintf(res, sizeof(res), "%d", result);
