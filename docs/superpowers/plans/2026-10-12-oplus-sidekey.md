@@ -1,5 +1,7 @@
 # oplus-sidekey Implementation Plan
 
+> **2026-10-13 完成状态：** Task0–9开发与本地验收已完成；保存/停止确认/安全配置加载、FSM覆盖、输入事件时间与统一511UTF8字节拒绝均落实，最终整分支审查Approved。WebUI99/99、CTest9/9，NDK/WebUI构建、ZIP和普通浏览器验证通过。安装包与真机待验清单见 [续接与验收记录](./2026-10-12-oplus-sidekey-status.md)。原始步骤复选框保留历史指导，当前完成状态以本说明及末尾修复清单为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 构建一个 KernelSU 模块，由 root 守护进程独占接管 OnePlus Ace 6 标准版的自定义侧键（`/dev/input/event0`，键码 735 / `0x2df`），按 1–3 次「单击/长按」序列绑定 shell 命令，并通过 KSU WebUI 配置。
@@ -594,7 +596,7 @@ Expected: 因头文件/实现缺失而失败。
 - 键为 `keycode`、`long_press_ms`、`window_ms` 时写入对应字段，非法数字返回 -1（致命）。
 - 键匹配 `^[01]{1,3}$` 视为绑定，超出范围或含其他字符计为 `skipped_lines`。
 - 绑定超过 `SIDEKEY_MAX_BINDINGS` 时计为 `skipped_lines`。
-- 值超过 `SIDEKEY_CMD_MAX - 1` 时截断并计为 `skipped_lines`。
+- **2026-10-13 用户批准更新：** 绑定命令超过 `SIDEKEY_CMD_MAX - 1`（511 个 UTF-8 字节）时拒绝整份配置，保持旧配置，不截断执行；前端解析、序列化与保存使用同一字节边界。超长配置行也不可截断解析。
 - 默认值：`keycode=735`，`long_press_ms=300`，`window_ms=300`。
 
 - [ ] **Step 4: 运行直到全部通过**
@@ -1625,3 +1627,27 @@ Expected: 输出 `stopped ok`。
 - Task 7 Step 1：`kernelsu` 包的加载方式取决于其 `index.js` 是否依赖 Node 内置模块，需先核实。
 - Task 6：`uninstall.sh` 按路径查进程用 `readlink /proc/<pid>/exe`，在 Android 上需 root，KSU 执行时满足。
 - 真机清单第 7 项「卸载后目录是否被删」未经官方文档确认，是本计划唯一明确标注为未知的验收项。
+
+## 2026-10-13 最终审查修复（已批准）
+
+用户明确授权「按推荐策略，把两项都修完」。保留工作区，不自动提交/合并。
+
+### I1 输入时序（主机TDD）
+
+- [x] RED：真实400ms长按在5000ms批量处理仍必须为1；窗口内1299ms按下不得被当前时间提前切断；覆盖299/300/301、跨读取批次、重复和无关键。
+- [x] GREEN：复用libevdev的CLOCK_MONOTONIC事件时间，检查设置失败、排除切时钟前旧队列；生产使用可测试的最小输入队列接入，按事件时间tick/key，排空后才按当前时间到期并poll。
+- [x] 输入写范围：daemon/src/main.c、daemon/CMakeLists.txt、新建daemon/include/sidekey_input.h、daemon/src/sidekey_input.c、daemon/tests/test_input.c；独立审查后跑全部主机测试与NDK。
+
+### I2 统一UTF8字节边界（C/TS/UI TDD）
+
+本节替代旧的截断规则：每条绑定命令最多511个UTF8字节；超过则拒绝整份配置并保持旧配置，禁止执行裁剪前缀。
+
+- [x] RED：ASCII/中文构成510、511通过而512拒绝；1023/1024/更长或无末尾换行的绑定行拒绝且旧配置不变；UI加载超限阻止保存，编辑超限不能发写入exec。
+- [x] GREEN：C先校验原始长度再copy，SIDEKEY_CONFIG_ERR_TOO_LONG=-2；TS复用TextEncoder按字节校验，解析/序列化/保存统一511。空绑定、CRLF、等号与现有跳过规则保持。
+- [x] 命令写范围：daemon/include/sidekey_config.h、daemon/src/sidekey_config.c、daemon/tests/test_config.c、webui/src/lib/config.ts、webui/src/App.tsx、webui/tests/config.test.ts、webui/tests/app.test.tsx。输入代理完成后控制器整合main明确拒绝及跳过计数日志。
+
+### 最终收尾
+
+- [x] 独立任务及整合审查；新鲜CTest/NDK/ARM64Android29/WebUItest-lint-build。
+- [x] 核验绝对dist路径后打包，检查ZIP布局/逐字节一致/LF/本地CSS；临时端口普通浏览器验收、清理自有会话与服务。
+- [x] 更新本状态清单及续接记录，明确真机待验，完成目标并交付ZIP。
