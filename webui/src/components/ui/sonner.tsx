@@ -1,12 +1,12 @@
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
 
-// 本项目是 Vite 单页应用，不使用 next-themes。主题固定跟随系统（"system"），
-// 与 shadcn 生成代码中 useTheme() 的默认值一致，因此移除了该依赖。
+// 与应用固定的深色主题保持一致。
 const Toaster = ({ ...props }: ToasterProps) => {
   return (
     <Sonner
-      theme="system"
+      theme="dark"
+      position="top-center"
       className="toaster group"
       icons={{
         success: (

@@ -179,7 +179,7 @@ describe("daemon control commands", () => {
 
 describe("template bridge commands", () => {
   it("reports an existing file read failure rather than an empty library", () => {
-    const script = `D=$(mktemp -d); trap 'rm -rf "$D"' EXIT; : > "$D/templates.json"; cat() { printf 'read failed' >&2; return 1; }; ${templatesReadCmd(M).replaceAll(M, "$D")}`;
+    const script = `D=$(mktemp -d); trap 'rm -rf "$D"' EXIT; printf 'stored' > "$D/templates.json"; cat() { printf 'read failed' >&2; return 1; }; ${templatesReadCmd(M).replaceAll(M, "$D")}`;
     expect(() => execFileSync(shell, ["-c", script], { encoding: "utf8", stdio: "pipe" })).toThrow();
   });
   it("reads an existing templates file and falls back to an empty array", () => {
@@ -190,6 +190,16 @@ describe("template bridge commands", () => {
   it("reads the file contents or prints an empty array when absent", () => {
     const script = `D=$(mktemp -d); trap 'rm -rf "$D"' EXIT; printf '[{"id":"x"}]' > "$D/templates.json"; ${templatesReadCmd(M).replaceAll(M, "$D")}; rm "$D/templates.json"; ${templatesReadCmd(M).replaceAll(M, "$D")}`;
     expect(execFileSync(shell, ["-c", script], { encoding: "utf8" })).toBe('[{"id":"x"}][]');
+  });
+
+  it("distinguishes a missing file from a stored empty library", () => {
+    const script = `D=$(mktemp -d); trap 'rm -rf "$D"' EXIT; ${templatesReadCmd(M).replaceAll(M, "$D")} 2> "$D/stderr"; printf '\\n'; cat "$D/stderr"; printf '\\n'; printf '[]' > "$D/templates.json"; ${templatesReadCmd(M).replaceAll(M, "$D")} 2> "$D/stderr"; printf '\\n'; cat "$D/stderr"`;
+    expect(execFileSync(shell, ["-c", script], { encoding: "utf8" })).toBe("[]\ntemplates-missing\n[]\n");
+  });
+
+  it("marks an existing zero-byte file as empty instead of missing", () => {
+    const script = `D=$(mktemp -d); trap 'rm -rf "$D"' EXIT; : > "$D/templates.json"; ${templatesReadCmd(M).replaceAll(M, "$D")} 2> "$D/stderr"; cat "$D/stderr"`;
+    expect(execFileSync(shell, ["-c", script], { encoding: "utf8" })).toBe("[]templates-empty");
   });
 
   it("writes through a same-directory temporary file and emits a template marker", () => {

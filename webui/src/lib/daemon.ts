@@ -42,7 +42,7 @@ export function saveCmd(moddir: string, base64: string): string {
 
 export function templatesReadCmd(moddir: string): string {
   const file = `${moddir}/templates.json`;
-  return `if [ -e "${file}" ] || [ -L "${file}" ]; then cat "${file}"; else printf '[]'; fi`;
+  return `if [ -e "${file}" ] || [ -L "${file}" ]; then if [ -s "${file}" ]; then cat "${file}"; else printf 'templates-empty' >&2; printf '[]'; fi; else printf 'templates-missing' >&2; printf '[]'; fi`;
 }
 
 export function templatesSaveCmd(moddir: string, base64: string): string {

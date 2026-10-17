@@ -1,5 +1,6 @@
 // 日志解析：解释日志（log.txt）与原始结构化记录（events.jsonl）。
 // 格式契约见计划 Task 7 与守护进程 sidekey_log.c。
+import { sequenceLabel } from "./config";
 
 export interface ExplainRow {
   time: string;
@@ -18,9 +19,16 @@ export interface EventRow {
   code: number;
 }
 
+export function formatExplainRow(row: ExplainRow): { resultLabel: string; summary: string } {
+  return row.seq ? {
+    resultLabel: row.result === "dropped" ? "未匹配" : row.result === "0" ? "执行成功" : `执行失败（${row.result}）`,
+    summary: sequenceLabel(row.seq),
+  } : { resultLabel: row.level === "ERROR" ? "错误" : row.level === "WARN" ? "提醒" : "服务记录", summary: row.message };
+}
+
 const LINE = /^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) (INFO|WARN|ERROR) (.*)$/;
 // 精确匹配契约格式：seq=<0|1 串> action=<命令或 none> result=<结果>
-const SEQ = /^seq=([01]{1,3}) action=(.*) result=(dropped|-?\d+)$/;
+const SEQ = /^seq=([01]+) action=(.*) result=(dropped|-?\d+)$/;
 
 export function parseExplainLog(text: string): ExplainRow[] {
   const rows: ExplainRow[] = [];
