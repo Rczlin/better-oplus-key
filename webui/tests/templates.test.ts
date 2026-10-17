@@ -43,6 +43,12 @@ describe("shell templates", () => {
     expect(() => serializeTemplates([template({ command: "x".repeat(511), name: "n".repeat(128) }), ...Array.from({ length: 2000 }, (_, i) => template({ id: `id-${i}`, command: `command-${i}` }))])).toThrow(/64 KiB/);
   });
 
+  it("rejects an oversized file before parsing and honors UTF-8 field boundaries", () => {
+    expect(() => parseTemplates(" ".repeat(65537))).toThrow(/64 KiB/);
+    expect(parseTemplates(JSON.stringify([template({ command: "中".repeat(170) + "x", name: "中".repeat(42) + "xx" })]))).toHaveLength(1);
+    expect(() => parseTemplates(JSON.stringify([template({ name: "中".repeat(43) })]))).toThrow(/名称/);
+  });
+
   it("merges commands while preserving existing identity and name", () => {
     const existing = [template({ updatedAt: 1 })];
     const result = mergeCommands(existing, ["input keyevent 3", "input keyevent 4"], 99);

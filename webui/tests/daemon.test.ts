@@ -178,6 +178,10 @@ describe("daemon control commands", () => {
 });
 
 describe("template bridge commands", () => {
+  it("reports an existing file read failure rather than an empty library", () => {
+    const script = `D=$(mktemp -d); trap 'rm -rf "$D"' EXIT; : > "$D/templates.json"; cat() { printf 'read failed' >&2; return 1; }; ${templatesReadCmd(M).replaceAll(M, "$D")}`;
+    expect(() => execFileSync(shell, ["-c", script], { encoding: "utf8", stdio: "pipe" })).toThrow();
+  });
   it("reads an existing templates file and falls back to an empty array", () => {
     expect(templatesReadCmd(M)).toContain(`cat "${M}/templates.json"`);
     expect(templatesReadCmd(M)).toContain("printf '[]'");

@@ -41,6 +41,7 @@ function dedupe(templates: ShellTemplate[]): ShellTemplate[] {
 }
 
 export function parseTemplates(text: string): ShellTemplate[] {
+  if (encoder.encode(text).length > MAX_TEMPLATES_BYTES) throw new Error("模板超过 64 KiB，请减少模板或缩短名称、命令");
   if (text === "") return [];
   let parsed: unknown;
   try { parsed = JSON.parse(text); } catch { throw new Error("模板 JSON 格式无效"); }
