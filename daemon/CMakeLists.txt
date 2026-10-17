@@ -25,8 +25,15 @@ add_executable(test_alloc tests/test_alloc.c)
 target_include_directories(test_alloc PRIVATE include ../third_party/uthash)
 add_test(NAME alloc COMMAND test_alloc)
 
-if(ANDROID)
-  # NDK 交叉编译：直接编译 vendored libevdev 源码，不依赖主机 pkg-config。
+if(NOT ANDROID)
+  find_package(PkgConfig QUIET)
+  if(PKG_CONFIG_FOUND)
+    pkg_check_modules(LIBEVDEV QUIET IMPORTED_TARGET libevdev)
+  endif()
+endif()
+
+if(ANDROID OR NOT LIBEVDEV_FOUND)
+  # NDK 交叉编译，或主机未安装 libevdev：直接编译 vendored libevdev 源码，不依赖 pkg-config。
   set(LIBEVDEV_SRC "${CMAKE_CURRENT_SOURCE_DIR}/../third_party/libevdev")
   add_library(libevdev_static STATIC
     ${LIBEVDEV_SRC}/libevdev/libevdev.c
@@ -36,7 +43,10 @@ if(ANDROID)
   # make-event-names.py 从 linux 内核头文件生成，输出到构建目录。
   set(LIBEVDEV_GEN_DIR "${CMAKE_CURRENT_BINARY_DIR}/libevdev-generated")
   file(MAKE_DIRECTORY ${LIBEVDEV_GEN_DIR})
-  find_program(PYTHON3_EXE NAMES python3 python REQUIRED)
+  find_program(PYTHON3_EXE NAMES python3 python)
+  if(NOT PYTHON3_EXE)
+    message(FATAL_ERROR "python3 is required to generate libevdev event-names.h")
+  endif()
   add_custom_command(
     OUTPUT ${LIBEVDEV_GEN_DIR}/event-names.h
     COMMAND ${PYTHON3_EXE} ${LIBEVDEV_SRC}/libevdev/make-event-names.py
@@ -60,8 +70,6 @@ if(ANDROID)
   add_library(LIBEVDEV_DEP INTERFACE)
   target_link_libraries(LIBEVDEV_DEP INTERFACE libevdev_static)
 else()
-  find_package(PkgConfig REQUIRED)
-  pkg_check_modules(LIBEVDEV REQUIRED IMPORTED_TARGET libevdev)
   add_library(LIBEVDEV_DEP INTERFACE)
   target_link_libraries(LIBEVDEV_DEP INTERFACE PkgConfig::LIBEVDEV)
 endif()
