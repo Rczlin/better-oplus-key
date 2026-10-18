@@ -17,3 +17,9 @@
 - `app_process` 依赖守护进程继承的 init 环境（`BOOTCLASSPATH` 等），KernelSU/Magisk 的 service.sh 均满足。
 - 每次提示启动一个 ART 进程（约数百毫秒、短暂内存），只在命令结束后异步运行，不影响按键响应。
 - `setCanBePromoted(fromUser=true)` 会在关闭状态下替用户打开组件的实况通知；只在用户启用流体云提示后、提示发布时执行。
+
+## 0.5.2 追加（真机反馈：展开难看、顶部被遮挡）
+
+- 截图显示 `ProgressStyle` 满格进度条 + 进度追踪图标压在末端；改为 `BigTextStyle`（同属可晋升样式）。
+- 顶部遮挡来自 `IMPORTANCE_HIGH` 渠道的横幅；新渠道 `sidekey_island` 为 `IMPORTANCE_LOW`（静音、无横幅；NMS 晋升判定不检查渠道重要性），并`setShowWhen(false)`。
+- 渠道重要性创建后应用无法降低，故换渠道 ID；Poster 以 root 调用 `deleteNotificationChannel(pkg, "sidekey_result")`（`checkCallerIsSystemOrSameApp` 对 uid 0 放行），接收器兜底路径同样删除。

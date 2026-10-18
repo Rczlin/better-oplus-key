@@ -51,6 +51,11 @@ public final class Poster {
 
         invoke(nm, "createNotificationChannelsForPackage", PKG, uid,
                 parceledList(Collections.singletonList(IslandNotification.channel(ctx))));
+        try {
+            invoke(nm, "deleteNotificationChannel", PKG, IslandNotification.LEGACY_CHANNEL);
+        } catch (Throwable ignored) {
+            // 旧渠道删不掉不影响发布
+        }
         boolean allowed = enablePromotion(nm, uid);
 
         Notification n = IslandNotification.build(ctx, a);

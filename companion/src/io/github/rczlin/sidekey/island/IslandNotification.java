@@ -4,14 +4,16 @@ import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.content.Context;
-import android.graphics.drawable.Icon;
 import android.os.Bundle;
 
 /** 构造流体云（Android 16 Live Updates / promoted ongoing）通知，Poster 与 IslandReceiver 共用。 */
 public final class IslandNotification {
     private IslandNotification() {}
 
-    static final String CHANNEL = "sidekey_result";
+    /** 低重要性渠道（静音）：只进流体云胶囊与通知栏，不弹横幅遮挡屏幕顶部。 */
+    static final String CHANNEL = "sidekey_island";
+    /** 0.5.0/0.5.1 使用的高重要性渠道（会弹横幅），发布时尝试删除。 */
+    static final String LEGACY_CHANNEL = "sidekey_result";
     static final String TAG = "sidekey";
     static final int ID = 1;
     /** API 36.1 的 Notification.EXTRA_REQUEST_PROMOTED_ONGOING；按 API 36 编译时直接写入同名 extra。 */
@@ -23,7 +25,7 @@ public final class IslandNotification {
 
     static NotificationChannel channel(Context context) {
         NotificationChannel ch = new NotificationChannel(CHANNEL,
-                context.getString(R.string.channel_name), NotificationManager.IMPORTANCE_HIGH);
+                context.getString(R.string.channel_name), NotificationManager.IMPORTANCE_LOW);
         ch.setDescription(context.getString(R.string.channel_description));
         ch.setShowBadge(false);
         ch.setSound(null, null);
@@ -51,10 +53,8 @@ public final class IslandNotification {
         String body = a.test ? context.getString(R.string.test_body) : PressNames.body(a.label, a.durationMs);
         String chip = a.test ? "✓ 测试" : PressNames.chip(a.seq, a.code);
 
-        Notification.ProgressStyle style = new Notification.ProgressStyle()
-                .addProgressSegment(new Notification.ProgressStyle.Segment(100).setColor(color))
-                .setProgress(100)
-                .setProgressTrackerIcon(Icon.createWithResource(context, R.drawable.ic_sidekey));
+        // 结果已经确定，不用进度条（满格进度条与末端图标展开后很难看）；BigTextStyle 同样可晋升为实况通知。
+        Notification.BigTextStyle style = new Notification.BigTextStyle().bigText(body);
 
         Bundle extras = new Bundle();
         extras.putBoolean(EXTRA_REQUEST_PROMOTED_ONGOING, true);
@@ -68,9 +68,9 @@ public final class IslandNotification {
                 .setColor(color)
                 .setColorized(colorized)
                 .setOngoing(true)
-                .setOnlyAlertOnce(false)
-                .setCategory(Notification.CATEGORY_PROGRESS)
-                .setShowWhen(true)
+                .setOnlyAlertOnce(true)
+                .setCategory(Notification.CATEGORY_STATUS)
+                .setShowWhen(false)
                 .setTimeoutAfter(a.showMs())
                 .addExtras(extras)
                 .build();

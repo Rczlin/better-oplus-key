@@ -22,6 +22,7 @@ public final class IslandReceiver extends BroadcastReceiver {
         if (nm.getNotificationChannel(IslandNotification.CHANNEL) == null) {
             nm.createNotificationChannel(IslandNotification.channel(context));
         }
+        nm.deleteNotificationChannel(IslandNotification.LEGACY_CHANNEL);
         PosterArgs a = new PosterArgs();
         a.test = intent.getBooleanExtra("test", false);
         a.seq = intent.getStringExtra("seq");
