@@ -37,9 +37,12 @@ public final class PressNames {
         return (code == 0 ? "✓ " : "✗ ") + name(seq);
     }
 
+    /** 耗时：1 秒内显示毫秒，1 分钟内保留一位小数，更长显示“分 秒”。 */
     public static String duration(long ms) {
         if (ms < 1000) return Math.max(0, ms) + " 毫秒";
-        return String.format(Locale.ROOT, "%.1f 秒", ms / 1000.0);
+        if (ms < 60_000) return String.format(Locale.ROOT, "%.1f 秒", Math.floor(ms / 100.0) / 10.0);
+        long s = ms / 1000;
+        return String.format(Locale.ROOT, "%d 分 %02d 秒", s / 60, s % 60);
     }
 
     /** 展开后的正文：动作摘要 · 耗时。 */

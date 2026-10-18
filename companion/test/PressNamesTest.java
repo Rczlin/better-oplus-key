@@ -34,6 +34,10 @@ public final class PressNamesTest {
         eq(PressNames.duration(1000), "1.0 秒");
         eq(PressNames.duration(12345), "12.3 秒");
         eq(PressNames.duration(-5), "0 毫秒");
+        eq(PressNames.duration(1999), "1.9 秒");
+        eq(PressNames.duration(59_999), "59.9 秒");
+        eq(PressNames.duration(60_000), "1 分 00 秒");
+        eq(PressNames.duration(125_400), "2 分 05 秒");
 
         eq(PressNames.body("截屏", 42), "截屏 · 42 毫秒");
         eq(PressNames.body("", 42), "42 毫秒");
