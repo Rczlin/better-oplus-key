@@ -21,6 +21,7 @@ typedef struct {
     int skipped_lines;
     int capture_output;   /* 1：收集命令输出到 output.jsonl；0：输出丢弃到 /dev/null */
     int island_notify;    /* 流体云提示：0 关闭，1 每次执行，2 仅失败 */
+    int island_seconds;   /* 流体云提示显示时长（秒），2–15，默认 5 */
 } sidekey_config_t;
 
 /* 从内存缓冲区解析。成功返回 0，命令/行过长返回 SIDEKEY_CONFIG_ERR_TOO_LONG，

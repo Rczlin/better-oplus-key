@@ -75,14 +75,17 @@ int main(void) {
     settle(1);
     CHECK(calls() == 1);
     char *c = slurp(g_calls_path);
-    CHECK(strstr(c, "broadcast\n--user\n0\n") != NULL);
-    CHECK(strstr(c, "-n\nio.github.rczlin.sidekey.island/.IslandReceiver\n") != NULL);
-    CHECK(strstr(c, "--es\nseq\n0\n--es\nlabel\ntrue\n--ei\ncode\n0\n--el\nduration_ms\n") != NULL);
+    char cp[400];
+    snprintf(cp, sizeof(cp), "-Djava.class.path=%s/companion/island.apk\n/system/bin\n", dir);
+    CHECK(strstr(c, cp) != NULL);
+    CHECK(strstr(c, "io.github.rczlin.sidekey.island.Poster\n") != NULL);
+    CHECK(strstr(c, "--seq\n0\n--label\ntrue\n--code\n0\n--duration\n") != NULL);
+    CHECK(strstr(c, "--show\n5\n") != NULL);
 
     on_sequence("00", 2, NULL);
     settle(2);
     CHECK(calls() == 2);
-    CHECK(strstr(slurp(g_calls_path), "--es\nseq\n00\n--es\nlabel\nexit 5\n--ei\ncode\n5\n") != NULL);
+    CHECK(strstr(slurp(g_calls_path), "--seq\n00\n--label\nexit 5\n--code\n5\n") != NULL);
 
     on_sequence("1", 1, NULL);   /* 无绑定：dropped */
     settle(2);
@@ -96,13 +99,14 @@ int main(void) {
 
     /* 模式 2：仅失败 */
     unlink(g_calls_path);
-    write_config("island_notify=2\n0=true\n00=exit 7\n");
+    write_config("island_notify=2\nisland_seconds=12\n0=true\n00=exit 7\n");
     on_sequence("0", 1, NULL);
     settle(0);
     CHECK(calls() == 0);
     on_sequence("00", 2, NULL);
     settle(1);
-    CHECK(calls() == 1 && strstr(slurp(g_calls_path), "--ei\ncode\n7\n") != NULL);
+    CHECK(calls() == 1 && strstr(slurp(g_calls_path), "--code\n7\n") != NULL);
+    CHECK(strstr(slurp(g_calls_path), "--show\n12\n") != NULL);
 
     /* 模式 0（缺省）：不提示 */
     unlink(g_calls_path);

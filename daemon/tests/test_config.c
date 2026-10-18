@@ -77,6 +77,13 @@ static void test_island_notify_key(void) {
     CHECK(sidekey_config_parse("island_notify=3\n", &c) == -1);
     CHECK(sidekey_config_parse("island_notify=\n", &c) == -1);
     CHECK(c.island_notify == 0 && c.skipped_lines == 0);
+    CHECK(c.island_seconds == 5);
+    CHECK(sidekey_config_parse("island_seconds=8\n", &c) == 0 && c.island_seconds == 8);
+    CHECK(sidekey_config_parse("island_seconds=2\n", &c) == 0 && c.island_seconds == 2);
+    CHECK(sidekey_config_parse("island_seconds=15\n", &c) == 0 && c.island_seconds == 15);
+    CHECK(sidekey_config_parse("0=x\n", &c) == 0 && c.island_seconds == 5);
+    CHECK(sidekey_config_parse("island_seconds=1\n", &c) == -1);
+    CHECK(sidekey_config_parse("island_seconds=16\n", &c) == -1);
     sidekey_config_destroy(&c);
 }
 

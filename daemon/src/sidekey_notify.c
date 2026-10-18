@@ -39,23 +39,27 @@ size_t sidekey_notify_label(const char *cmd, char *out, size_t cap) {
     return limit;
 }
 
-int sidekey_notify_prepare(sidekey_notify_msg_t *m, const char *seq, const char *cmd,
-                           int code, long long duration_ms) {
-    if (!m || !seq || !cmd) return -1;
+int sidekey_notify_prepare(sidekey_notify_msg_t *m, const char *apk, const char *seq, const char *cmd,
+                           int code, long long duration_ms, int show_seconds) {
+    if (!m || !apk || !seq || !cmd) return -1;
+    if (strlen(apk) >= SIDEKEY_NOTIFY_APK_MAX) return -1;
     memset(m, 0, sizeof(*m));
     size_t seq_len = strlen(seq);
     if (seq_len > SIDEKEY_NOTIFY_SEQ_MAX) seq_len = SIDEKEY_NOTIFY_SEQ_MAX;
     memcpy(m->seq, seq, seq_len);
     m->seq[seq_len] = '\0';
     sidekey_notify_label(cmd, m->label, sizeof(m->label));
+    if (show_seconds < SIDEKEY_NOTIFY_SHOW_MIN) show_seconds = SIDEKEY_NOTIFY_SHOW_MIN;
+    if (show_seconds > SIDEKEY_NOTIFY_SHOW_MAX) show_seconds = SIDEKEY_NOTIFY_SHOW_MAX;
     snprintf(m->code, sizeof(m->code), "%d", code);
     snprintf(m->duration, sizeof(m->duration), "%lld", duration_ms < 0 ? 0LL : duration_ms);
-    /* -f 0x10000020：FLAG_RECEIVER_FOREGROUND | FLAG_INCLUDE_STOPPED_PACKAGES（伴生应用从未启动过也能收到） */
+    snprintf(m->show, sizeof(m->show), "%d", show_seconds);
+    snprintf(m->classpath, sizeof(m->classpath), "-Djava.class.path=%s", apk);
+    /* 选项都在类名之后作为 main 参数传入；app_process 只解析类名之前的参数，动作摘要以 “-” 开头也无妨。 */
     char *args[] = {
-        "cmd", "activity", "broadcast", "--user", "0", "-f", "0x10000020",
-        "-a", SIDEKEY_NOTIFY_ACTION, "-n", SIDEKEY_NOTIFY_COMPONENT,
-        "--es", "seq", m->seq, "--es", "label", m->label,
-        "--ei", "code", m->code, "--el", "duration_ms", m->duration, NULL
+        "app_process", m->classpath, "/system/bin", "--nice-name=sidekey-island", SIDEKEY_NOTIFY_MAIN,
+        "--seq", m->seq, "--label", m->label, "--code", m->code,
+        "--duration", m->duration, "--show", m->show, NULL
     };
     _Static_assert(sizeof(args) / sizeof(args[0]) <= SIDEKEY_NOTIFY_ARGC_MAX, "argv too small");
     memcpy(m->argv, args, sizeof(args));

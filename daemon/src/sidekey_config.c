@@ -19,6 +19,7 @@ void sidekey_config_init(sidekey_config_t *c) {
     c->fsm.long_press_ms = 300;
     c->fsm.window_ms = 300;
     c->capture_output = 1;
+    c->island_seconds = 5;
 }
 
 void sidekey_config_destroy(sidekey_config_t *c) {
@@ -141,6 +142,8 @@ int sidekey_config_parse(const char *text, sidekey_config_t *out) {
             if (!parse_int(equals, 0, 1, &next.capture_output)) result = -1;
         } else if (strcmp(line, "island_notify") == 0) {
             if (!parse_int(equals, 0, 2, &next.island_notify)) result = -1;
+        } else if (strcmp(line, "island_seconds") == 0) {
+            if (!parse_int(equals, 2, 15, &next.island_seconds)) result = -1;
         } else if (is_bind_key(line)) {
             result = set_binding(&next, line, equals);
         } else {

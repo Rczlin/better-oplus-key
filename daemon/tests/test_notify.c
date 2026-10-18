@@ -52,26 +52,32 @@ static void test_label(void) {
 
 static void test_prepare(void) {
     sidekey_notify_msg_t m;
-    CHECK(sidekey_notify_prepare(&m, "00", "input keyevent 120", 127, 42) == 0);
-    const char *want[] = {"cmd", "activity", "broadcast", "--user", "0", "-f", "0x10000020",
-        "-a", SIDEKEY_NOTIFY_ACTION, "-n", SIDEKEY_NOTIFY_COMPONENT,
-        "--es", "seq", "00", "--es", "label", "input keyevent 120",
-        "--ei", "code", "127", "--el", "duration_ms", "42", NULL};
+    CHECK(sidekey_notify_prepare(&m, "/data/adb/modules/oplus-sidekey/companion/island.apk",
+                                 "00", "input keyevent 120", 127, 42, 8) == 0);
+    const char *want[] = {"app_process", "-Djava.class.path=/data/adb/modules/oplus-sidekey/companion/island.apk",
+        "/system/bin", "--nice-name=sidekey-island", "io.github.rczlin.sidekey.island.Poster",
+        "--seq", "00", "--label", "input keyevent 120", "--code", "127", "--duration", "42", "--show", "8", NULL};
     size_t i = 0;
     for (; want[i]; i++) {
         CHECK(m.argv[i] != NULL);
         if (m.argv[i]) CHECK(strcmp(m.argv[i], want[i]) == 0);
     }
     CHECK(m.argv[i] == NULL);
-    CHECK(strcmp(SIDEKEY_NOTIFY_COMPONENT, "io.github.rczlin.sidekey.island/.IslandReceiver") == 0);
-    CHECK(strcmp(SIDEKEY_NOTIFY_ACTION, "io.github.rczlin.sidekey.island.SHOW") == 0);
+    CHECK(strcmp(SIDEKEY_NOTIFY_MAIN, "io.github.rczlin.sidekey.island.Poster") == 0);
 
+    /* 显示时长限制在 2–15 秒；序列截断；负耗时归零 */
     char seq[64]; memset(seq, '0', 63); seq[63] = 0;
-    CHECK(sidekey_notify_prepare(&m, seq, "x", -3, -5) == 0);
-    CHECK(strlen(m.argv[13]) == SIDEKEY_NOTIFY_SEQ_MAX);
-    CHECK(strcmp(m.argv[19], "-3") == 0 && strcmp(m.argv[22], "0") == 0);
-    CHECK(sidekey_notify_prepare(&m, NULL, "x", 0, 0) == -1);
-    CHECK(sidekey_notify_prepare(NULL, "0", "x", 0, 0) == -1);
+    CHECK(sidekey_notify_prepare(&m, "/a.apk", seq, "x", -3, -5, 99) == 0);
+    CHECK(strlen(m.argv[6]) == SIDEKEY_NOTIFY_SEQ_MAX);
+    CHECK(strcmp(m.argv[10], "-3") == 0 && strcmp(m.argv[12], "0") == 0 && strcmp(m.argv[14], "15") == 0);
+    CHECK(sidekey_notify_prepare(&m, "/a.apk", "0", "x", 0, 0, 0) == 0 && strcmp(m.argv[14], "2") == 0);
+
+    CHECK(sidekey_notify_prepare(&m, "/a.apk", NULL, "x", 0, 0, 5) == -1);
+    CHECK(sidekey_notify_prepare(NULL, "/a.apk", "0", "x", 0, 0, 5) == -1);
+    CHECK(sidekey_notify_prepare(&m, NULL, "0", "x", 0, 0, 5) == -1);
+    char longpath[SIDEKEY_NOTIFY_APK_MAX + 8];
+    memset(longpath, 'a', sizeof(longpath) - 1); longpath[sizeof(longpath) - 1] = 0;
+    CHECK(sidekey_notify_prepare(&m, longpath, "0", "x", 0, 0, 5) == -1);
 }
 
 int main(void) {
