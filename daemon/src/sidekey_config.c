@@ -135,9 +135,9 @@ int sidekey_config_parse(const char *text, sidekey_config_t *out) {
         if (strcmp(line, "keycode") == 0) {
             if (!parse_int(equals, 1, 767, &next.keycode)) result = -1;
         } else if (strcmp(line, "long_press_ms") == 0) {
-            if (!parse_int(equals, 100, 800, &next.fsm.long_press_ms)) result = -1;
+            if (!parse_int(equals, 100, 1200, &next.fsm.long_press_ms)) result = -1;
         } else if (strcmp(line, "window_ms") == 0) {
-            if (!parse_int(equals, 100, 800, &next.fsm.window_ms)) result = -1;
+            if (!parse_int(equals, 100, 1200, &next.fsm.window_ms)) result = -1;
         } else if (strcmp(line, "capture_output") == 0) {
             if (!parse_int(equals, 0, 1, &next.capture_output)) result = -1;
         } else if (strcmp(line, "island_notify") == 0) {

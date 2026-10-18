@@ -3,7 +3,7 @@ import { render, fireEvent, waitFor, screen, cleanup, within } from "@testing-li
 import { toast } from "sonner";
 import "@testing-library/jest-dom/vitest";
 import App from "../src/App";
-import { islandCmd, islandState, parseIslandResult, parseIslandStatus } from "../src/lib/island";
+import { islandCmd, islandResultText, islandState, parseIslandResult, parseIslandStatus } from "../src/lib/island";
 
 const MODDIR = "/data/adb/modules/oplus-sidekey";
 const callbacks = new Set<string>();
@@ -60,7 +60,10 @@ describe("island helpers", () => {
     expect(parseIslandResult("island=sent\n")).toEqual({ kind: "sent" });
     expect(parseIslandResult("island=sent\nisland.path=root\nisland.promoted=1\n")).toEqual({ kind: "sent", path: "root", promoted: true });
     expect(parseIslandResult("island=sent\nisland.path=root\nisland.promoted=0\n")).toEqual({ kind: "sent", path: "root", promoted: false });
-    expect(parseIslandResult("island=sent\nisland.path=broadcast\nisland.error=X\n")).toEqual({ kind: "sent", path: "broadcast" });
+    expect(parseIslandResult("island=sent\nisland.path=broadcast\nisland.error=X\n")).toEqual({ kind: "sent", path: "broadcast", error: "X" });
+    const text = islandResultText({ kind: "sent", path: "broadcast", error: "NullPointerException: boom" });
+    expect(text.ok).toBe(false);
+    expect(text.text).toContain("NullPointerException: boom");
     expect(parseIslandResult("island=missing-apk\n")).toEqual({ kind: "missing-apk" });
     expect(parseIslandResult("island=failed\nisland.error=Failure [X]\n")).toEqual({ kind: "failed", error: "Failure [X]" });
     expect(parseIslandResult("garbage")).toEqual({ kind: "failed", error: "garbage" });

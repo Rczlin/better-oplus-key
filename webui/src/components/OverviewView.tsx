@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { ArrowRight, Plus, Power, RefreshCw, Keyboard, Terminal, Activity, Zap, Sparkles, CircleHelp, Cpu, MemoryStick, Clock, BatteryCharging, Hash, Check, CircleAlert, CircleDashed, HardDrive } from "lucide-react";
+import { ArrowRight, Plus, Power, RefreshCw, Keyboard, Terminal, Activity, Zap, Sparkles, CircleHelp, Cpu, MemoryStick, Clock, BatteryCharging, Hash, Check, CircleAlert, CircleDashed, HardDrive, ChevronDown } from "lucide-react";
 import { Button } from "./ui/button";
 import { formatExplainRow, type ExplainRow } from "@/lib/log";
 import { describeCommand } from "@/lib/presets";
@@ -10,7 +10,7 @@ import type { ShellTemplate } from "@/lib/templates";
 import { cn } from "@/lib/utils";
 
 const FAQ: [string, string][] = [
-  ["短按和长按怎么区分？", "按下后马上松开是短按；按住超过“长按时长”（默认 300 毫秒）再松开是长按。可以在“绑定 → 时间设置”中选择灵敏、标准或从容。"],
+  ["短按和长按怎么区分？", "按下后马上松开是短按；按住达到“长按时长”（默认 300 毫秒）就是长按，没有更长组合时到点立即执行。可以在“绑定 → 时间设置”中选择预设，或在 100–1200 毫秒之间自由调整。"],
   ["为什么单击有时要等一下才执行？", "如果同时设置了单击和双击，单击后需要等“连按间隔”确认你不再按第二下，才会执行单击。只设置单击时，松开立即执行。"],
   ["设置好了为什么没反应？", "先确认已点“保存配置”，并在本页看到服务“运行中”。再到“诊断”页刷新记录：显示“未匹配”说明按法和设置的组合不一致；显示“执行失败”说明命令本身出错，可在“命令输出”里看到命令打印的错误信息。"],
   ["怎么看命令的执行结果？", "每次侧键触发的命令，其输出（含错误输出）、退出码和耗时都会记录在“诊断 → 命令输出”，最近一次也显示在本页。每次最多保留 4 KB 输出。"],
@@ -132,7 +132,7 @@ export const OverviewView = memo(function OverviewView({ running, bindingCount, 
     <div className="flex flex-wrap gap-3"><Button variant="ghost" onClick={onBindings}>管理我的绑定<ArrowRight /></Button><Button variant="ghost" onClick={onDiagnostics}>查看诊断记录<ArrowRight /></Button></div>
     <section aria-labelledby="faq-title" className="min-w-0 rounded-2xl border bg-card p-5 sm:p-6">
       <h2 id="faq-title" className="flex items-center gap-2 font-semibold"><CircleHelp className="size-4 text-primary" />常见问题</h2>
-      <div className="mt-4 grid gap-2">{FAQ.map(([q, a]) => <details key={q} className="group min-w-0 rounded-xl border bg-background/40 px-4 py-3"><summary className="cursor-pointer list-none text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">{q}</summary><p className="mt-2 text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">{a}</p></details>)}</div>
+      <div className="mt-4 grid gap-2">{FAQ.map(([q, a]) => <details key={q} className="group min-w-0 rounded-xl border bg-background/40 px-4 py-3 transition-colors open:border-primary/30 open:bg-primary/5"><summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-ring">{q}<ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" /></summary><p className="mt-2 text-sm leading-6 text-muted-foreground [overflow-wrap:anywhere]">{a}</p></details>)}</div>
     </section>
   </>;
 });

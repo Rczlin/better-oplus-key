@@ -43,7 +43,7 @@ describe("dynamic config", () => {
   it("round-trips arbitrary bindings, keycode and exact command bytes", () => {
     const bindings = Object.fromEntries(Array.from({ length: 20 }, (_, i) => ["0".repeat(i + 1), "  echo '中=a'  "]));
     bindings["01".repeat(64)] = "echo long";
-    const c = { keycode: 767, longPressMs: 100, windowMs: 800, bindings };
+    const c = { keycode: 767, longPressMs: 100, windowMs: 1200, bindings };
     expect(parseConfig(serializeConfig(c))).toEqual({ ...c, errors: [] });
     expect(parseConfig("keycode=1\n").keycode).toBe(1);
   });
@@ -54,7 +54,7 @@ describe("dynamic config", () => {
   it("preserves equals, spaces, quotes and Chinese", () => {
     expect(parseConfig("# comment\r\n0= sh -c 'a=中; echo $a'  \r\n").bindings["0"]).toBe(" sh -c 'a=中; echo $a'  ");
   });
-  it.each(["keycode=0", "keycode=768", "keycode=4294968031", "keycode=735x", "window_ms=-1", "long_press_ms=801", "window_ms=300.5", "window_ms=+300", "long_press_ms= 300"])("rejects strict numbers: %s", text => {
+  it.each(["keycode=0", "keycode=768", "keycode=4294968031", "keycode=735x", "window_ms=-1", "long_press_ms=1201", "window_ms=300.5", "window_ms=+300", "long_press_ms= 300"])("rejects strict numbers: %s", text => {
     expect(parseConfig(text).errors.length).toBeGreaterThan(0);
   });
   it("retains errors even when a later duplicate is valid", () => {
@@ -78,8 +78,8 @@ describe("dynamic config", () => {
     expect(() => serializeConfig(c)).toThrow(/64 KiB/);
   });
   it("validates timing, sequence and serializer inputs", () => {
-    for (const v of [100, 300, 800]) expect(validateTiming(v)).toBe(true);
-    for (const v of [99, 801, 300.5, NaN]) expect(validateTiming(v)).toBe(false);
+    for (const v of [100, 300, 800, 1200]) expect(validateTiming(v)).toBe(true);
+    for (const v of [99, 1201, 300.5, NaN]) expect(validateTiming(v)).toBe(false);
     expect(validateSequence("01001")).toBe(true);
     for (const s of ["", "02", "0\n"]) expect(validateSequence(s)).toBe(false);
     expect(sequenceLabel("010")).toBe("短按 → 长按 → 短按");

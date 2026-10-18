@@ -6,7 +6,7 @@ export type IslandState = "ready" | "no-permission" | "not-installed" | "missing
 /** path：root 为直接发布（可靠），broadcast 为兜底广播；promoted：系统是否把通知升级为实况通知（流体云）。 */
 export type IslandResult =
   | { kind: "installed" | "missing-apk" }
-  | { kind: "sent"; path?: "root" | "broadcast"; promoted?: boolean }
+  | { kind: "sent"; path?: "root" | "broadcast"; promoted?: boolean; error?: string }
   | { kind: "failed"; error: string };
 
 /** 流体云依赖 Android 16 Live Updates（ColorOS 16）。 */
@@ -27,7 +27,7 @@ export function islandCmd(moddir: string, action: IslandAction, seconds?: number
 
 /** 测试结果的说明文字；ok 为 false 时界面以提醒色显示。 */
 export function islandResultText(r: Extract<IslandResult, { kind: "sent" }>): { ok: boolean; text: string } {
-  if (r.path === "broadcast") return { ok: false, text: "已通过备用广播发送，可能只显示普通通知。请把组件更新到最新版本或重新安装模块。" };
+  if (r.path === "broadcast") return { ok: false, text: "root 直接发布失败，已改用备用广播，可能只显示普通通知。" + (r.error ? `原因：${r.error}` : "请把模块更新到最新版本。") };
   if (r.promoted === true) return { ok: true, text: "已显示在流体云（实况通知）中。" };
   if (r.promoted === false) return { ok: false, text: "通知已发出，但系统没有把它升级为流体云。请在 设置 › 通知与状态栏 › 侧键流体云提示 中打开“实况通知/流体云”，再测试一次。" };
   return { ok: true, text: "已发送测试提示，请看屏幕顶部的流体云。" };
@@ -66,6 +66,7 @@ export function parseIslandResult(stdout: string): IslandResult {
     if (path === "root" || path === "broadcast") r.path = path;
     const promoted = kv["island.promoted"];
     if (promoted === "1" || promoted === "0") r.promoted = promoted === "1";
+    if (r.path === "broadcast" && kv["island.error"]) r.error = kv["island.error"];
     return r;
   }
   return { kind: "failed", error: kv["island.error"] || stdout.trim() || "未知错误" };

@@ -228,7 +228,28 @@ public final class Poster {
         Field sys = at.getDeclaredField("mSystemThread");
         sys.setAccessible(true);
         sys.setBoolean(thread, true);
+        fillConfigurationController(at, thread);
         return (Context) at.getMethod("getSystemContext").invoke(thread);
+    }
+
+    /**
+     * Android 13 起 ActivityThread 的配置由 ConfigurationController 管理，正常由 attach() 创建。
+     * 这里只调用了构造函数，getSystemContext() 读取配置时会因它为 null 抛 NullPointerException，
+     * 因此手动补上（与 scrcpy 的做法一致）。旧系统没有该类时忽略。
+     */
+    private static void fillConfigurationController(Class<?> at, Object thread) {
+        try {
+            Field f = at.getDeclaredField("mConfigurationController");
+            f.setAccessible(true);
+            if (f.get(thread) != null) return;
+            Class<?> cc = Class.forName("android.app.ConfigurationController");
+            Class<?> internal = Class.forName("android.app.ActivityThreadInternal");
+            Constructor<?> k = cc.getDeclaredConstructor(internal);
+            k.setAccessible(true);
+            f.set(thread, k.newInstance(thread));
+        } catch (Throwable ignored) {
+            // 没有该字段或构造函数签名不同：交给 getSystemContext() 自行处理
+        }
     }
 
     private static Object notificationService() throws Exception {

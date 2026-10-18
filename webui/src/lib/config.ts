@@ -31,8 +31,11 @@ export const ISLAND_SECONDS_DEFAULT = 5;
 export function validateIslandSeconds(n: number): boolean {
   return Number.isInteger(n) && n >= 2 && n <= 15;
 }
+/** 长按时长与连按间隔的取值范围（毫秒），与守护进程解析器一致。 */
+export const TIMING_MIN = 100;
+export const TIMING_MAX = 1200;
 export function validateTiming(n: number): boolean {
-  return Number.isInteger(n) && n >= 100 && n <= 800;
+  return Number.isInteger(n) && n >= TIMING_MIN && n <= TIMING_MAX;
 }
 function validKeycode(n: number): boolean {
   return Number.isInteger(n) && n >= 1 && n <= 767;
@@ -70,7 +73,7 @@ export function parseConfig(text: string): ParsedConfig {
 }
 export function serializeConfig(c: Omit<ParsedConfig, "errors">): string {
   if (!validKeycode(c.keycode)) throw new Error("键码必须是 1–767 之间的整数");
-  if (!validateTiming(c.longPressMs) || !validateTiming(c.windowMs)) throw new Error("时间必须是 100–800 之间的整数");
+  if (!validateTiming(c.longPressMs) || !validateTiming(c.windowMs)) throw new Error("时间必须是 100–1200 之间的整数");
   const lines = [`keycode=${c.keycode}`, `long_press_ms=${c.longPressMs}`, `window_ms=${c.windowMs}`];
   if (c.captureOutput === false) lines.push("capture_output=0");
   if (c.islandNotify !== undefined && c.islandNotify !== 0) {

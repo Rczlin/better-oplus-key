@@ -44,7 +44,7 @@ static void test_more_than_fourteen(void) {
 }
 
 static void test_strict_integers(void) {
-    const char *bad[] = {"long_press_ms=0\n", "window_ms=-1\n", "long_press_ms=801\n",
+    const char *bad[] = {"long_press_ms=0\n", "window_ms=-1\n", "long_press_ms=1201\n",
         "keycode=768\n", "keycode=4294967596\n", "keycode=735x\n"};
     for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
         sidekey_config_t c; sidekey_config_init(&c);
@@ -54,8 +54,8 @@ static void test_strict_integers(void) {
         sidekey_config_destroy(&c);
     }
     sidekey_config_t c; sidekey_config_init(&c);
-    CHECK(sidekey_config_parse("keycode=1\nlong_press_ms=100\nwindow_ms=800\n", &c) == 0);
-    CHECK(c.keycode == 1 && c.fsm.long_press_ms == 100 && c.fsm.window_ms == 800);
+    CHECK(sidekey_config_parse("keycode=1\nlong_press_ms=100\nwindow_ms=1200\n", &c) == 0);
+    CHECK(c.keycode == 1 && c.fsm.long_press_ms == 100 && c.fsm.window_ms == 1200);
     sidekey_config_destroy(&c);
 }
 

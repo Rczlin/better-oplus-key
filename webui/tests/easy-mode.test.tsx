@@ -155,8 +155,8 @@ describe("easy mode for non-shell users", () => {
     fireEvent.change(screen.getByRole("slider", { name: "长按时长" }), { target: { value: "520" } });
     expect(screen.getByLabelText("长按时长（毫秒）")).toHaveValue(520);
     expect(screen.getByTestId("timing-summary")).toHaveTextContent("按住 520 毫秒");
-    fireEvent.change(screen.getByLabelText("连按间隔（毫秒）"), { target: { value: "900" } });
-    expect(screen.getByText("连按间隔需在 100–800 毫秒之间")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("连按间隔（毫秒）"), { target: { value: "1300" } });
+    expect(screen.getByText("连按间隔需在 100–1200 毫秒之间")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "恢复默认" }));
     expect(screen.getByLabelText("长按时长（毫秒）")).toHaveValue(300);
     expect(screen.getByLabelText("连按间隔（毫秒）")).toHaveValue(300);

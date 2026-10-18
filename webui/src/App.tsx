@@ -92,7 +92,7 @@ export default function App() {
       const r = await runShell(`cat ${MODDIR}/config.conf`);
       if (r.errno !== 0) throw new Error(r.stderr || `读取配置失败：${r.errno}`);
       const loaded = parseConfig(r.stdout);
-      if (loaded.errors.length) throw new Error("无效配置：" + loaded.errors.join("、") + "；时间须为 100–800 整数，命令须为单行且最多 4095 个 UTF-8 字节");
+      if (loaded.errors.length) throw new Error("无效配置：" + loaded.errors.join("、") + "；时间须为 100–1200 整数，命令须为单行且最多 4095 个 UTF-8 字节");
       setCfg(loaded); setDisk(fingerprint(loaded)); setConfigState("ready"); setConfigError(""); return true;
     } catch (e) { setConfigError(message(e)); setConfigState("error"); return false; }
     finally { operation.current = false; setBusy(null); }

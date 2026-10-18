@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SequenceGlyph } from "./SequenceGlyph";
 import { Dialog } from "radix-ui";
 import { Play, Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -76,9 +77,9 @@ export function BindingEditor({ open, initial, initialCommand, initialPresetId, 
   };
   return <Dialog.Root open={open} onOpenChange={onOpenChange}>
     <Dialog.Portal>
-      <Dialog.Overlay className="fixed inset-0 z-40 bg-black/55" />
+      <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60 backdrop-blur-[2px] duration-200 data-[state=open]:animate-in data-[state=open]:fade-in data-[state=closed]:animate-out data-[state=closed]:fade-out" />
       <Dialog.Content onCloseAutoFocus={e => { e.preventDefault(); onCloseFocus(); }}
-        className="fixed left-1/2 top-1/2 z-50 max-h-[92dvh] min-w-0 w-[calc(100%-1.5rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-2xl border bg-card p-4 shadow-2xl sm:p-6">
+        className="sheet-content fixed inset-x-0 bottom-0 z-50 max-h-[90dvh] min-w-0 overflow-y-auto overscroll-contain rounded-t-3xl border border-b-0 bg-card p-4 pt-6 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] shadow-2xl duration-200 data-[state=open]:animate-in data-[state=open]:slide-in-from-bottom data-[state=closed]:animate-out data-[state=closed]:slide-out-to-bottom sm:inset-x-auto sm:bottom-auto sm:left-1/2 sm:top-1/2 sm:max-h-[92dvh] sm:w-[calc(100%-1.5rem)] sm:max-w-2xl sm:-translate-x-1/2 sm:-translate-y-1/2 sm:rounded-2xl sm:border-b sm:p-6 sm:data-[state=open]:slide-in-from-bottom-4 sm:data-[state=closed]:slide-out-to-bottom-4 sm:data-[state=open]:fade-in sm:data-[state=closed]:fade-out">
         <Dialog.Title className="text-lg font-semibold">{initial ? "编辑绑定" : "新增绑定"}</Dialog.Title>
         <Dialog.Description className="mt-1 text-sm text-muted-foreground">两步完成：先选按压方式，再选要执行的动作。</Dialog.Description>
         <form onSubmit={submit} className="mt-5 grid min-w-0 gap-5">
@@ -95,7 +96,7 @@ export function BindingEditor({ open, initial, initialCommand, initialPresetId, 
               <Button type="button" variant="ghost" disabled={disabled || !sequence} onClick={() => updateSequence("")}>清空组合</Button>
             </div>
             <div data-testid="sequence-preview" aria-live="polite" className="max-h-40 min-w-0 overflow-auto rounded-lg bg-muted p-3 text-sm [overflow-wrap:anywhere]">
-              {sequence ? <><p>{sequenceLabel(sequence)}</p><p className="mt-2 font-mono text-xs text-muted-foreground">编码 {sequence} · {sequence.length} 次按压</p></> : "选择常用组合，或点击“短按”“长按”组成按压顺序"}
+              {sequence ? <><div className="flex min-w-0 flex-wrap items-center gap-3"><SequenceGlyph seq={sequence} /><p className="min-w-0">{sequenceLabel(sequence)}</p></div><p className="mt-2 font-mono text-xs text-muted-foreground">编码 {sequence} · {sequence.length} 次按压</p></> : "选择常用组合，或点击“短按”“长按”组成按压顺序"}
             </div>
             <p className="text-xs leading-5 text-muted-foreground">短按：轻按后马上松开。长按：按住超过 {longPressMs} 毫秒再松开。时长可在“时间设置”中调整。</p>
             {(conflicts.longer.length > 0 || conflicts.shorter.length > 0) && <p data-testid="prefix-hint" className="flex gap-2 rounded-lg border border-amber-400/20 bg-amber-400/5 p-2.5 text-xs leading-5 text-amber-200 [overflow-wrap:anywhere]"><Info className="mt-0.5 size-3.5 shrink-0" />

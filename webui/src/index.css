@@ -97,19 +97,108 @@
   html {
     @apply font-sans;
     scrollbar-gutter: stable;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    overscroll-behavior-y: none;
     }
+  summary::-webkit-details-marker { display: none; }
+  ::selection { background: color-mix(in oklch, var(--primary) 35%, transparent); }
 }
 
 .service-panel {
   background: radial-gradient(ellipse at 100% 0, #575bc425, transparent 65%), linear-gradient(135deg, #1a2337, #141c2b);
 }
 
+/* 滑块：粗轨道 + 已选部分高亮 + 大拇指，手指更好拖。--fill 由组件按当前值给出。 */
+.range-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 1.75rem;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.range-input:disabled { cursor: not-allowed; opacity: 0.5; }
+.range-input::-webkit-slider-runnable-track {
+  height: 0.375rem;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--primary) var(--fill, 50%), var(--input) var(--fill, 50%));
+}
+.range-input::-moz-range-track { height: 0.375rem; border-radius: 999px; background: var(--input); }
+.range-input::-moz-range-progress { height: 0.375rem; border-radius: 999px; background: var(--primary); }
+.range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -0.5rem;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 999px;
+  background: var(--foreground);
+  border: 4px solid var(--primary);
+  box-shadow: 0 2px 8px #0008;
+  transition: transform 0.15s;
+}
+.range-input:active::-webkit-slider-thumb { transform: scale(1.15); }
+.range-input::-moz-range-thumb { width: 1rem; height: 1rem; border-radius: 999px; background: var(--foreground); border: 4px solid var(--primary); }
+.range-input:focus-visible { outline: none; }
+.range-input:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px color-mix(in oklch, var(--ring) 45%, transparent); }
+
+/* 手机上的底部弹层顶部加一条拖动提示条 */
+.sheet-content::before {
+  content: "";
+  position: absolute;
+  top: 0.5rem;
+  left: 50%;
+  width: 2.5rem;
+  height: 0.25rem;
+  border-radius: 999px;
+  background: var(--input);
+  transform: translateX(-50%);
+}
+@media (min-width: 640px) { .sheet-content::before { display: none; } }
+
 .app-navigation {
   padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
 }
 
 @media (min-width: 768px) {
-  .app-navigation { padding-bottom: 0; }
+  /* 滑块：粗轨道 + 已选部分高亮 + 大拇指，手指更好拖。--fill 由组件按当前值给出。 */
+.range-input {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 1.75rem;
+  background: transparent;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+.range-input:disabled { cursor: not-allowed; opacity: 0.5; }
+.range-input::-webkit-slider-runnable-track {
+  height: 0.375rem;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--primary) var(--fill, 50%), var(--input) var(--fill, 50%));
+}
+.range-input::-moz-range-track { height: 0.375rem; border-radius: 999px; background: var(--input); }
+.range-input::-moz-range-progress { height: 0.375rem; border-radius: 999px; background: var(--primary); }
+.range-input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  margin-top: -0.5rem;
+  width: 1.375rem;
+  height: 1.375rem;
+  border-radius: 999px;
+  background: var(--foreground);
+  border: 4px solid var(--primary);
+  box-shadow: 0 2px 8px #0008;
+  transition: transform 0.15s;
+}
+.range-input:active::-webkit-slider-thumb { transform: scale(1.15); }
+.range-input::-moz-range-thumb { width: 1rem; height: 1rem; border-radius: 999px; background: var(--foreground); border: 4px solid var(--primary); }
+.range-input:focus-visible { outline: none; }
+.range-input:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px color-mix(in oklch, var(--ring) 45%, transparent); }
+
+.app-navigation { padding-bottom: 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {
