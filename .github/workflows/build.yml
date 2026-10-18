@@ -28,10 +28,6 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests -v
       - name: Test daemon
         run: bash scripts/test-host.sh
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: '21'
       - name: Test companion app logic
         run: bash scripts/test-companion.sh
       - name: Test and build WebUI
