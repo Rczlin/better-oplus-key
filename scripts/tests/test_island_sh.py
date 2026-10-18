@@ -32,6 +32,16 @@ exit 0
 echo "$*" >> "$STUB/cmd.log"
 echo "Broadcast completed: result=0"
 """,
+    "app_process": r"""#!/bin/sh
+echo "$*" >> "$STUB/app_process.log"
+if [ -f "$STUB/poster_fail" ]; then echo "island.error=SecurityException: denied"; echo "island.path=none"; exit 1; fi
+echo "island=sent"
+echo "island.path=root"
+echo "island.promoted=1"
+""",
+    "appops": r"""#!/bin/sh
+echo "$*" >> "$STUB/appops.log"
+""",
     "getprop": r"""#!/bin/sh
 [ "$1" = ro.build.version.sdk ] && echo 36
 """,
@@ -134,13 +144,41 @@ class IslandScriptTest(unittest.TestCase):
         self.assertIn("island.installed=1", out)
         self.assertIn("island.granted=1", out)
 
-    def test_test_broadcast(self):
+    def test_test_posts_via_app_process_as_root(self):
         code, out = self.run_island("test")
-        self.assertEqual(code, 0)
+        self.assertEqual(code, 0, out)
         self.assertIn("island=sent", out)
-        log = (self.stub / "cmd.log").read_text()
-        self.assertIn("activity broadcast --user 0 -f 0x10000020 -a io.github.rczlin.sidekey.island.SHOW "
-                      "-n io.github.rczlin.sidekey.island/.IslandReceiver --ez test true", log)
+        self.assertIn("island.promoted=1", out)
+        log = (self.stub / "app_process.log").read_text()
+        self.assertIn(f"-Djava.class.path={self.apk} /system/bin --nice-name=sidekey-island "
+                      "io.github.rczlin.sidekey.island.Poster --test --show 5", log)
+
+    def test_test_uses_given_seconds_within_range(self):
+        self.run_island("test", "9")
+        self.run_island("test", "99")
+        self.run_island("test", "abc")
+        log = (self.stub / "app_process.log").read_text().splitlines()
+        self.assertTrue(log[0].endswith("--show 9"))
+        self.assertTrue(log[1].endswith("--show 5"))
+        self.assertTrue(log[2].endswith("--show 5"))
+
+    def test_test_failure_reports_error(self):
+        (self.stub / "poster_fail").touch()
+        code, out = self.run_island("test")
+        self.assertNotEqual(code, 0)
+        self.assertIn("island=failed", out)
+        self.assertIn("island.error=SecurityException: denied", out)
+
+    def test_test_missing_apk(self):
+        self.apk.unlink()
+        code, out = self.run_island("test")
+        self.assertNotEqual(code, 0)
+        self.assertIn("island=missing-apk", out)
+
+    def test_install_allows_promoted_notifications(self):
+        self.run_island("install")
+        self.assertIn("set io.github.rczlin.sidekey.island POST_PROMOTED_NOTIFICATIONS allow",
+                      (self.stub / "appops.log").read_text())
 
     def test_unknown_action(self):
         code, out = self.run_island("bogus")
