@@ -8,6 +8,8 @@ export interface ParsedConfig {
   captureOutput?: boolean;
   /** 流体云提示（island_notify）：0 关闭，1 每次执行，2 仅失败；缺省为 0 */
   islandNotify?: IslandNotifyMode;
+  /** 流体云提示显示时长（island_seconds，秒）：2–15；缺省为 5 */
+  islandSeconds?: number;
   bindings: Record<string, string>;
   errors: string[];
 }
@@ -24,6 +26,10 @@ export function sequenceLabel(seq: string): string {
 }
 export function validateCommand(command: string): boolean {
   return !/[\r\n\0]/.test(command) && encoder.encode(command).length <= MAX_COMMAND_BYTES;
+}
+export const ISLAND_SECONDS_DEFAULT = 5;
+export function validateIslandSeconds(n: number): boolean {
+  return Number.isInteger(n) && n >= 2 && n <= 15;
 }
 export function validateTiming(n: number): boolean {
   return Number.isInteger(n) && n >= 100 && n <= 800;
@@ -45,6 +51,9 @@ export function parseConfig(text: string): ParsedConfig {
       if (value === "0" || value === "1") out.captureOutput = value === "1"; else out.errors.push(key);
     } else if (key === "island_notify") {
       if (value === "0" || value === "1" || value === "2") out.islandNotify = Number(value) as IslandNotifyMode; else out.errors.push(key);
+    } else if (key === "island_seconds") {
+      const n = /^[0-9]+$/.test(value) ? Number(value) : NaN;
+      if (validateIslandSeconds(n)) out.islandSeconds = n; else out.errors.push(key);
     } else if (["keycode", "long_press_ms", "window_ms"].includes(key)) {
       const n = value.length > 0 && !/[^0-9]/.test(value) ? Number(value) : NaN;
       if (!(key === "keycode" ? validKeycode(n) : validateTiming(n))) out.errors.push(key);
@@ -67,6 +76,10 @@ export function serializeConfig(c: Omit<ParsedConfig, "errors">): string {
   if (c.islandNotify !== undefined && c.islandNotify !== 0) {
     if (c.islandNotify !== 1 && c.islandNotify !== 2) throw new Error("流体云提示设置无效");
     lines.push(`island_notify=${c.islandNotify}`);
+  }
+  if (c.islandSeconds !== undefined && c.islandSeconds !== ISLAND_SECONDS_DEFAULT) {
+    if (!validateIslandSeconds(c.islandSeconds)) throw new Error("流体云显示时长必须是 2–15 秒");
+    lines.push(`island_seconds=${c.islandSeconds}`);
   }
   for (const [seq, cmd] of Object.entries(c.bindings).sort(([a], [b]) => a.length - b.length || a.localeCompare(b))) {
     if (!validateSequence(seq)) throw new Error("组合只能包含短按和长按");

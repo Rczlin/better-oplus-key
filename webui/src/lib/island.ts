@@ -3,7 +3,11 @@ export const ISLAND_PACKAGE = "io.github.rczlin.sidekey.island";
 export type IslandAction = "status" | "install" | "test";
 export interface IslandStatus { apk: boolean; installed: boolean; granted: boolean; sdk: number }
 export type IslandState = "ready" | "no-permission" | "not-installed" | "missing-apk" | "unsupported";
-export type IslandResult = { kind: "installed" | "sent" | "missing-apk" } | { kind: "failed"; error: string };
+/** path：root 为直接发布（可靠），broadcast 为兜底广播；promoted：系统是否把通知升级为实况通知（流体云）。 */
+export type IslandResult =
+  | { kind: "installed" | "missing-apk" }
+  | { kind: "sent"; path?: "root" | "broadcast"; promoted?: boolean }
+  | { kind: "failed"; error: string };
 
 /** 流体云依赖 Android 16 Live Updates（ColorOS 16）。 */
 export const ISLAND_MIN_SDK = 36;
@@ -16,8 +20,17 @@ export const ISLAND_STATE_TEXT: Record<IslandState, string> = {
   unsupported: "需要 ColorOS 16（Android 16）及以上",
 };
 
-export function islandCmd(moddir: string, action: IslandAction): string {
-  return `sh ${moddir}/island.sh ${action} 2>&1`;
+export function islandCmd(moddir: string, action: IslandAction, seconds?: number): string {
+  const arg = action === "test" && seconds !== undefined && Number.isInteger(seconds) ? ` ${seconds}` : "";
+  return `sh ${moddir}/island.sh ${action}${arg} 2>&1`;
+}
+
+/** 测试结果的说明文字；ok 为 false 时界面以提醒色显示。 */
+export function islandResultText(r: Extract<IslandResult, { kind: "sent" }>): { ok: boolean; text: string } {
+  if (r.path === "broadcast") return { ok: false, text: "已通过备用广播发送，可能只显示普通通知。请把组件更新到最新版本或重新安装模块。" };
+  if (r.promoted === true) return { ok: true, text: "已显示在流体云（实况通知）中。" };
+  if (r.promoted === false) return { ok: false, text: "通知已发出，但系统没有把它升级为流体云。请在 设置 › 通知与状态栏 › 侧键流体云提示 中打开“实况通知/流体云”，再测试一次。" };
+  return { ok: true, text: "已发送测试提示，请看屏幕顶部的流体云。" };
 }
 
 function keyValues(stdout: string): Record<string, string> {
@@ -46,6 +59,14 @@ export function islandState(s: IslandStatus): IslandState {
 export function parseIslandResult(stdout: string): IslandResult {
   const kv = keyValues(stdout);
   const kind = kv.island;
-  if (kind === "installed" || kind === "sent" || kind === "missing-apk") return { kind };
+  if (kind === "installed" || kind === "missing-apk") return { kind };
+  if (kind === "sent") {
+    const r: IslandResult = { kind };
+    const path = kv["island.path"];
+    if (path === "root" || path === "broadcast") r.path = path;
+    const promoted = kv["island.promoted"];
+    if (promoted === "1" || promoted === "0") r.promoted = promoted === "1";
+    return r;
+  }
   return { kind: "failed", error: kv["island.error"] || stdout.trim() || "未知错误" };
 }

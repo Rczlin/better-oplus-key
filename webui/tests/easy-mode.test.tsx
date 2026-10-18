@@ -150,6 +150,19 @@ describe("easy mode for non-shell users", () => {
     expect(screen.getByRole("button", { name: /^从容/ })).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("adjusts timing with sliders, flags out-of-range values and restores defaults", async () => {
+    bridge(); render(<App />); await ready(); navigate("绑定");
+    fireEvent.change(screen.getByRole("slider", { name: "长按时长" }), { target: { value: "520" } });
+    expect(screen.getByLabelText("长按时长（毫秒）")).toHaveValue(520);
+    expect(screen.getByTestId("timing-summary")).toHaveTextContent("按住 520 毫秒");
+    fireEvent.change(screen.getByLabelText("连按间隔（毫秒）"), { target: { value: "900" } });
+    expect(screen.getByText("连按间隔需在 100–800 毫秒之间")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "恢复默认" }));
+    expect(screen.getByLabelText("长按时长（毫秒）")).toHaveValue(300);
+    expect(screen.getByLabelText("连按间隔（毫秒）")).toHaveValue(300);
+    expect(screen.getByRole("button", { name: /^标准/ })).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("explains logged actions by name", async () => {
     bridge((shell, cb) => {
       if (shell.includes("tail -n") && shell.includes("log.txt")) { reply(cb, 0, "2026-10-17 10:00:00 INFO seq=0 action=input keyevent 120 result=0\n2026-10-17 10:00:01 INFO seq=11 action=none result=dropped\n"); return true; }

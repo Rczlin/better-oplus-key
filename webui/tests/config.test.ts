@@ -20,6 +20,25 @@ describe("island_notify", () => {
   });
 });
 
+describe("island_seconds", () => {
+  it("defaults to 5 seconds and is omitted when unchanged", () => {
+    expect(parseConfig("0=x\n").islandSeconds).toBeUndefined();
+    expect(serializeConfig({ keycode: 735, longPressMs: 300, windowMs: 300, islandSeconds: 5, bindings: {} })).not.toContain("island_seconds");
+  });
+  it.each([2, 8, 15])("round-trips %s seconds", n => {
+    const text = serializeConfig({ keycode: 735, longPressMs: 300, windowMs: 300, islandSeconds: n, bindings: {} });
+    expect(text.split("\n")).toContain(`island_seconds=${n}`);
+    expect(parseConfig(text).islandSeconds).toBe(n);
+    expect(parseConfig(text).errors).toEqual([]);
+  });
+  it.each(["island_seconds=1", "island_seconds=16", "island_seconds=", "island_seconds=5s"])("rejects %s", text => {
+    expect(parseConfig(text).errors).toContain("island_seconds");
+  });
+  it("refuses to save an invalid duration", () => {
+    expect(() => serializeConfig({ keycode: 735, longPressMs: 300, windowMs: 300, islandSeconds: 20, bindings: {} })).toThrow("流体云");
+  });
+});
+
 describe("dynamic config", () => {
   it("round-trips arbitrary bindings, keycode and exact command bytes", () => {
     const bindings = Object.fromEntries(Array.from({ length: 20 }, (_, i) => ["0".repeat(i + 1), "  echo '中=a'  "]));

@@ -41,6 +41,7 @@ describe("island helpers", () => {
     expect(islandCmd(MODDIR, "status")).toBe(`sh ${MODDIR}/island.sh status 2>&1`);
     expect(islandCmd(MODDIR, "install")).toBe(`sh ${MODDIR}/island.sh install 2>&1`);
     expect(islandCmd(MODDIR, "test")).toBe(`sh ${MODDIR}/island.sh test 2>&1`);
+    expect(islandCmd(MODDIR, "test", 8)).toBe(`sh ${MODDIR}/island.sh test 8 2>&1`);
   });
   it("parses status and derives a state", () => {
     const s = parseIslandStatus(READY);
@@ -57,6 +58,9 @@ describe("island helpers", () => {
   it("parses install and test results", () => {
     expect(parseIslandResult("island=installed\n")).toEqual({ kind: "installed" });
     expect(parseIslandResult("island=sent\n")).toEqual({ kind: "sent" });
+    expect(parseIslandResult("island=sent\nisland.path=root\nisland.promoted=1\n")).toEqual({ kind: "sent", path: "root", promoted: true });
+    expect(parseIslandResult("island=sent\nisland.path=root\nisland.promoted=0\n")).toEqual({ kind: "sent", path: "root", promoted: false });
+    expect(parseIslandResult("island=sent\nisland.path=broadcast\nisland.error=X\n")).toEqual({ kind: "sent", path: "broadcast" });
     expect(parseIslandResult("island=missing-apk\n")).toEqual({ kind: "missing-apk" });
     expect(parseIslandResult("island=failed\nisland.error=Failure [X]\n")).toEqual({ kind: "failed", error: "Failure [X]" });
     expect(parseIslandResult("garbage")).toEqual({ kind: "failed", error: "garbage" });
@@ -87,14 +91,34 @@ describe("fluid cloud setting", () => {
     expect(within(screen.getByRole("radiogroup", { name: "流体云提示" })).getByRole("radio", { name: "仅失败" })).toBeChecked();
   });
 
-  it("sends a test notification", async () => {
-    bridge((shell, cb) => { if (shell === islandCmd(MODDIR, "test")) { reply(cb, 0, "island=sent\n"); return true; } });
+  it("sends a test notification with the chosen duration and reports promotion", async () => {
+    bridge((shell, cb) => { if (shell.startsWith(`sh ${MODDIR}/island.sh test`)) { reply(cb, 0, "island=sent\nisland.path=root\nisland.promoted=1\n"); return true; } });
     const success = vi.spyOn(toast, "success");
     render(<App />); await ready(); navigate("绑定");
     await screen.findByText("组件已就绪");
+    fireEvent.click(within(screen.getByRole("radiogroup", { name: "显示时长" })).getByRole("radio", { name: "8 秒" }));
     fireEvent.click(screen.getByRole("button", { name: "发送测试" }));
-    await waitFor(() => expect(shells).toContain(islandCmd(MODDIR, "test")));
-    await waitFor(() => expect(success).toHaveBeenCalledWith(expect.stringContaining("已发送测试提示")));
+    await waitFor(() => expect(shells).toContain(islandCmd(MODDIR, "test", 8)));
+    await waitFor(() => expect(success).toHaveBeenCalledWith(expect.stringContaining("流体云")));
+    expect(screen.getByTestId("island-result")).toHaveTextContent("已显示在流体云");
+  });
+
+  it("explains when the system does not promote the notification", async () => {
+    bridge((shell, cb) => { if (shell.startsWith(`sh ${MODDIR}/island.sh test`)) { reply(cb, 0, "island=sent\nisland.path=root\nisland.promoted=0\n"); return true; } });
+    render(<App />); await ready(); navigate("绑定");
+    await screen.findByText("组件已就绪");
+    fireEvent.click(screen.getByRole("button", { name: "发送测试" }));
+    expect(await screen.findByTestId("island-result")).toHaveTextContent("实况通知");
+  });
+
+  it("saves the display duration", async () => {
+    bridge();
+    render(<App />); await ready(); navigate("绑定");
+    const group = screen.getByRole("radiogroup", { name: "显示时长" });
+    expect(within(group).getByRole("radio", { name: "5 秒" })).toBeChecked();
+    fireEvent.click(within(group).getByRole("radio", { name: "10 秒" }));
+    fireEvent.click(screen.getByRole("button", { name: /保存配置/ }));
+    await waitFor(() => expect(configPayload).toContain("island_seconds=10"));
   });
 
   it("offers install when the component is missing and refreshes afterwards", async () => {
