@@ -11,6 +11,7 @@ import { DiagnosticsView } from "@/components/DiagnosticsView";
 import { toast } from "sonner";
 import { parseConfig, serializeConfig, type ParsedConfig } from "@/lib/config";
 import { isKsuEnvironment, runShell } from "@/lib/ksu";
+import { islandCmd, islandState, parseIslandResult, parseIslandStatus, type IslandState } from "@/lib/island";
 import { parseEventsJsonl, parseExplainLog, type ExplainRow, type EventRow } from "@/lib/log";
 import { parseOutputJsonl, type OutputRecord } from "@/lib/output";
 import { computeMetrics, dashboardCmd, localDate, parseDashboard, todayStats, type KnownSizes, type ServiceMetrics, type ServiceSnapshot, type TodayStats } from "@/lib/service";
@@ -27,7 +28,7 @@ function encodeBase64(text: string): string {
   return btoa(bin);
 }
 function fingerprint(c: ParsedConfig): string {
-  return JSON.stringify([c.keycode, c.longPressMs, c.windowMs, c.captureOutput !== false, Object.entries(c.bindings).sort(([a], [b]) => a.localeCompare(b))]);
+  return JSON.stringify([c.keycode, c.longPressMs, c.windowMs, c.captureOutput !== false, c.islandNotify ?? 0, Object.entries(c.bindings).sort(([a], [b]) => a.localeCompare(b))]);
 }
 function message(e: unknown): string { return e instanceof Error ? e.message : String(e); }
 // 自动收录时，内置动作用动作名称命名，自定义命令沿用“模板 N”。
@@ -56,6 +57,9 @@ export default function App() {
   const focusTarget = useRef<HTMLElement | null>(null);
   const addButton = useRef<HTMLButtonElement>(null);
   const [templates, setTemplates] = useState<ShellTemplate[]>([]);
+  const [islandStatus, setIslandStatus] = useState<IslandState | null>(null);
+  const [islandBusy, setIslandBusy] = useState(false);
+  const islandChecked = useRef(false);
   const [templateState, setTemplateState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [templateReadError, setTemplateReadError] = useState("");
   const [templateWriteError, setTemplateWriteError] = useState("");
@@ -228,6 +232,37 @@ export default function App() {
       setLogErrors(errors); setLogsRead(true);
     } finally { logsLock.current = false; setLogsBusy(false); }
   };
+  // 流体云组件：进入“绑定”页时检查一次状态；安装、测试由用户点击触发。
+  const refreshIsland = useCallback(async () => {
+    try {
+      const status = parseIslandStatus((await runShell(islandCmd(MODDIR, "status"))).stdout);
+      setIslandStatus(status ? islandState(status) : null);
+    } catch { setIslandStatus(null); }
+  }, []);
+  useEffect(() => {
+    if (!ksu || activeView !== "bindings" || islandChecked.current) return;
+    islandChecked.current = true;
+    void refreshIsland();
+  }, [ksu, activeView, refreshIsland]);
+  const installIsland = async () => {
+    setIslandBusy(true);
+    try {
+      const result = parseIslandResult((await runShell(islandCmd(MODDIR, "install"))).stdout);
+      if (result.kind === "installed") toast.success("流体云组件已就绪");
+      else if (result.kind === "missing-apk") toast.error("当前模块包不含流体云组件");
+      else toast.error("组件安装失败：" + (result.kind === "failed" ? result.error : result.kind));
+    } catch (e) { toast.error("组件安装失败：" + message(e)); }
+    finally { await refreshIsland(); setIslandBusy(false); }
+  };
+  const testIsland = async () => {
+    setIslandBusy(true);
+    try {
+      const result = parseIslandResult((await runShell(islandCmd(MODDIR, "test"))).stdout);
+      if (result.kind === "sent") toast.success("已发送测试提示，请看屏幕顶部的流体云");
+      else toast.error("测试提示发送失败：" + (result.kind === "failed" ? result.error : result.kind));
+    } catch (e) { toast.error("测试提示发送失败：" + message(e)); }
+    finally { setIslandBusy(false); }
+  };
   const listPackages = async () => {
     const r = await runShell("pm list packages -3");
     if (r.errno !== 0) throw new Error(r.stderr || `读取失败：${r.errno}`);
@@ -287,7 +322,7 @@ export default function App() {
     {templateWriteError && (activeView === "bindings" || activeView === "templates") && <p role="alert" className="min-w-0 rounded-xl border border-amber-400/20 bg-amber-400/5 p-4 text-sm leading-6 text-amber-200 [overflow-wrap:anywhere]">{templateWriteError}</p>}
     {dirty && activeView !== "bindings" && <div role="status" data-testid="unsaved-banner" className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/30 bg-amber-400/5 px-4 py-3 text-sm text-amber-200"><span>有未保存的修改，保存后才会生效。</span><Button size="sm" disabled={!canEdit} onClick={() => void save()}>{busy === "save" ? "保存中…" : "立即保存"}</Button></div>}
     {activeView === "overview" && <OverviewView running={running} bindingCount={Object.keys(cfg.bindings).length} templateCount={templates.length} latest={latestRow} latestOutput={latestOutput && (!latestRow || latestOutput.time >= latestRow.time) ? latestOutput : undefined} snapshot={snapshot} metrics={metrics} today={today} templates={templates} autoRefresh={ksu} busy={!!busy} statusBusy={busy === "status"} enabled={ksu} canEdit={canEdit} onToggle={() => void toggleDaemon()} onRefresh={() => { void refreshStatus().then(() => refreshDashboard()); }} onAdd={trigger => openEditor(null, trigger)} onPacks={() => setPacksOpen(true)} onBindings={() => setActiveView("bindings")} onDiagnostics={() => setActiveView("diagnostics")} />}
-    {activeView === "bindings" && <BindingsView cfg={cfg} templates={templates} onPacks={() => setPacksOpen(true)} canEdit={canEdit} dirty={dirty} stateText={stateText} saveBusy={busy === "save"} addButton={addButton} onEdit={openEditor} onDelete={seq => { if (!canEdit) return; const bindings = { ...cfg.bindings }; delete bindings[seq]; setCfg({ ...cfg, bindings }); }} onTiming={(key, value) => setCfg(c => ({ ...c, [key]: value }))} onCaptureOutput={value => setCfg(c => ({ ...c, captureOutput: value }))} onSave={() => void save()} />}
+    {activeView === "bindings" && <BindingsView cfg={cfg} templates={templates} onPacks={() => setPacksOpen(true)} canEdit={canEdit} dirty={dirty} stateText={stateText} saveBusy={busy === "save"} addButton={addButton} onEdit={openEditor} onDelete={seq => { if (!canEdit) return; const bindings = { ...cfg.bindings }; delete bindings[seq]; setCfg({ ...cfg, bindings }); }} onTiming={(key, value) => setCfg(c => ({ ...c, [key]: value }))} onCaptureOutput={value => setCfg(c => ({ ...c, captureOutput: value }))} onIslandNotify={value => setCfg(c => ({ ...c, islandNotify: value }))} island={ksu ? { state: islandStatus, busy: islandBusy, onInstall: () => void installIsland(), onTest: () => void testIsland() } : undefined} onSave={() => void save()} />}
     {activeView === "templates" && <>
       {templateReadError && <p role="alert" className="min-w-0 rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm text-destructive [overflow-wrap:anywhere]">模板读取失败：{templateReadError}。重新读取成功后可继续编辑。</p>}
       {templateState === "loading" && <p role="status" className="text-sm text-muted-foreground">正在读取模板…</p>}
