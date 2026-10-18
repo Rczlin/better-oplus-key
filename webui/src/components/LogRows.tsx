@@ -1,10 +1,11 @@
+import { memo } from "react";
 import { Check, CircleAlert, CircleDashed } from "lucide-react";
 import { CommandPreview } from "./CommandPreview";
 import { formatExplainRow, type ExplainRow } from "@/lib/log";
 import { describeCommand } from "@/lib/presets";
 import type { ShellTemplate } from "@/lib/templates";
 
-export function LogRows({ rows, logsRead, onOpen, templates = [] }: { rows: ExplainRow[]; logsRead: boolean; onOpen?: (row: ExplainRow) => void; templates?: ShellTemplate[] }) {
+export const LogRows = memo(function LogRows({ rows, logsRead, onOpen, templates = [] }: { rows: ExplainRow[]; logsRead: boolean; onOpen?: (row: ExplainRow) => void; templates?: ShellTemplate[] }) {
   return <div data-testid="log-explain" className="grid min-w-0 max-w-full gap-3">
     {rows.length ? rows.map((row, i) => {
       const { resultLabel, summary } = formatExplainRow(row);
@@ -23,4 +24,4 @@ export function LogRows({ rows, logsRead, onOpen, templates = [] }: { rows: Expl
       </article>;
     }) : <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">{logsRead ? "暂无可用记录" : "点击刷新读取"}</div>}
   </div>;
-}
+});

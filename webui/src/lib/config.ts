@@ -4,10 +4,12 @@ export interface ParsedConfig {
   keycode: number;
   longPressMs: number;
   windowMs: number;
+  /** 是否收集命令输出（capture_output）；缺省为 true */
+  captureOutput?: boolean;
   bindings: Record<string, string>;
   errors: string[];
 }
-export const MAX_COMMAND_BYTES = 511;
+export const MAX_COMMAND_BYTES = 4095;
 export const MAX_CONFIG_BYTES = 65536;
 const encoder = new TextEncoder();
 
@@ -36,7 +38,9 @@ export function parseConfig(text: string): ParsedConfig {
     const eq = line.indexOf("=");
     if (eq < 0) continue;
     const key = line.slice(0, eq), value = line.slice(eq + 1);
-    if (["keycode", "long_press_ms", "window_ms"].includes(key)) {
+    if (key === "capture_output") {
+      if (value === "0" || value === "1") out.captureOutput = value === "1"; else out.errors.push(key);
+    } else if (["keycode", "long_press_ms", "window_ms"].includes(key)) {
       const n = value.length > 0 && !/[^0-9]/.test(value) ? Number(value) : NaN;
       if (!(key === "keycode" ? validKeycode(n) : validateTiming(n))) out.errors.push(key);
       else if (key === "keycode") out.keycode = n;
@@ -54,6 +58,7 @@ export function serializeConfig(c: Omit<ParsedConfig, "errors">): string {
   if (!validKeycode(c.keycode)) throw new Error("键码必须是 1–767 之间的整数");
   if (!validateTiming(c.longPressMs) || !validateTiming(c.windowMs)) throw new Error("时间必须是 100–800 之间的整数");
   const lines = [`keycode=${c.keycode}`, `long_press_ms=${c.longPressMs}`, `window_ms=${c.windowMs}`];
+  if (c.captureOutput === false) lines.push("capture_output=0");
   for (const [seq, cmd] of Object.entries(c.bindings).sort(([a], [b]) => a.length - b.length || a.localeCompare(b))) {
     if (!validateSequence(seq)) throw new Error("组合只能包含短按和长按");
     if (!validateCommand(cmd)) throw new Error(`命令须为单行，最多 ${MAX_COMMAND_BYTES} 个 UTF-8 字节，不能含 NUL`);

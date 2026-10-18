@@ -2,3 +2,4 @@ build/
 dist/
 *.zip
 webui/node_modules/
+__pycache__/

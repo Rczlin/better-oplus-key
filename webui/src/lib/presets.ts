@@ -3,6 +3,7 @@
 // 标注“需真机验证”的动作依赖具体 ROM 或第三方应用版本。
 import { validateCommand } from "./config";
 import type { ShellTemplate } from "./templates";
+import { decodeScript } from "./script";
 
 export type PresetCategory = "system" | "media" | "toggle" | "pages" | "apps" | "advanced";
 export type ParamKind = "package" | "url" | "phone" | "path" | "text";
@@ -198,7 +199,7 @@ export function buildPresetCommand(preset: Preset, values: Record<string, string
     }
     command = preset.build(clean);
   }
-  if (!validateCommand(command)) throw new Error("生成的命令超过 511 个 UTF-8 字节，请缩短参数");
+  if (!validateCommand(command)) throw new Error("生成的命令超过 4095 个 UTF-8 字节，请缩短参数");
   return command;
 }
 
@@ -217,7 +218,8 @@ export function describeCommand(command: string, templates: ShellTemplate[] = []
   const match = matchPreset(command);
   if (match) return { name: match.preset.label && match.preset.params?.length ? match.preset.label(match.values) : match.preset.name, builtin: true };
   const template = templates.find(t => t.command === command);
-  return template ? { name: template.name, builtin: false } : { name: "自定义命令", builtin: false };
+  if (template) return { name: template.name, builtin: false };
+  return { name: decodeScript(command) !== null ? "多行脚本" : "自定义命令", builtin: false };
 }
 
 /** 把方案合并进绑定草稿；返回被替换（命令不同）的已有组合。 */

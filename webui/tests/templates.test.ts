@@ -28,7 +28,7 @@ describe("shell templates", () => {
     expect(() => parseTemplates(JSON.stringify([{ ...template(), command: "a\nb" }]))).toThrow(/命令/);
     expect(() => parseTemplates(JSON.stringify([{ ...template(), name: "a\0b" }]))).toThrow(/名称/);
     expect(() => parseTemplates(JSON.stringify([{ ...template(), name: "a".repeat(129) }]))).toThrow(/名称/);
-    expect(() => parseTemplates(JSON.stringify([{ ...template(), command: "x".repeat(512) }]))).toThrow(/命令/);
+    expect(() => parseTemplates(JSON.stringify([{ ...template(), command: "x".repeat(4096) }]))).toThrow(/命令/);
   });
 
   it("keeps the last entry for duplicate commands", () => {
@@ -40,7 +40,7 @@ describe("shell templates", () => {
   });
 
   it("rejects a serialized collection over 64 KiB", () => {
-    expect(() => serializeTemplates([template({ command: "x".repeat(511), name: "n".repeat(128) }), ...Array.from({ length: 2000 }, (_, i) => template({ id: `id-${i}`, command: `command-${i}` }))])).toThrow(/64 KiB/);
+    expect(() => serializeTemplates([template({ command: "x".repeat(4095), name: "n".repeat(128) }), ...Array.from({ length: 2000 }, (_, i) => template({ id: `id-${i}`, command: `command-${i}` }))])).toThrow(/64 KiB/);
   });
 
   it("rejects an oversized file before parsing and honors UTF-8 field boundaries", () => {

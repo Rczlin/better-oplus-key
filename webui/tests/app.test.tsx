@@ -74,9 +74,9 @@ describe("binding workflow", () => {
     fireEvent.click(within(edited).getByRole("button", { name: "删除" }));
     expect(document.querySelectorAll('[data-test^="binding-"]')).toHaveLength(1);
   });
-  it.each(["x".repeat(512), "中".repeat(171), "a\nb", "a\0b"])("blocks invalid command %# before saving", async value => {
+  it.each(["x".repeat(4096), "中".repeat(1366), "a\0b"])("blocks invalid command %# before saving", async value => {
     bridge(); render(<App />); await loaded(); click("新增绑定"); click("长按"); command(value); click("添加绑定");
-    expect(screen.getByRole("alert")).toHaveTextContent(/511|单行|NUL/);
+    expect(screen.getByRole("alert")).toHaveTextContent(/4095|单行|NUL/);
     expect(screen.getByRole("dialog")).toBeInTheDocument();
   });
   it("keeps empty command disabled and restores focus after Escape", async () => {
@@ -92,7 +92,7 @@ describe("binding workflow", () => {
 describe("loading and state protection", () => {
   it.each([
     [1, persistedConfig, "Permission denied"], [0, "window_ms=5\n", ""],
-    [0, "0=" + "x".repeat(512), ""], [0, "keycode=768\n", ""],
+    [0, "0=" + "x".repeat(4096), ""], [0, "keycode=768\n", ""],
   ] as const)("blocks overwrite after read failure %# and allows retry", async (errno, stdout, stderr) => {
     let reads=0, writes=0, pending="";
     bridge((shell, cb) => {
@@ -153,7 +153,7 @@ describe("loading and state protection", () => {
   });
   it("shows log read errors and keeps successful partial data",async()=>{
     let logCalls=0;
-    bridge((shell,cb)=>{if(shell.includes("tail -n")){logCalls++;reply(cb,shell.includes("log.txt")?1:0,shell.includes("events.jsonl")?' {"wall_ms":1,"mono_ms":2,"edge":"up","code":735}\n':"","Permission denied");}else reply(cb,0,shell===configRead?persistedConfig:"stopped\n");});
+    bridge((shell,cb)=>{if(shell.includes("tail -n")){if(shell.startsWith("tail -n"))logCalls++;reply(cb,shell.includes("log.txt")?1:0,shell.includes("events.jsonl")?' {"wall_ms":1,"mono_ms":2,"edge":"up","code":735}\n':"","Permission denied");}else reply(cb,0,shell===configRead?persistedConfig:"stopped\n");});
     render(<App />);await loaded();expect(logCalls).toBe(0);navigate("诊断");click("刷新记录");
     await screen.findByText(/解释记录读取失败.*Permission denied/);
     fireEvent.mouseDown(screen.getByRole("tab",{name:"原始事件"}), { button: 0, ctrlKey: false });

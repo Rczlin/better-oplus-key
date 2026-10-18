@@ -2,6 +2,10 @@
 
 KernelSU 模块：接管 OnePlus Ace 6 侧键，让单击、双击、长按等不同按法各自执行一个动作，比如截屏、播放/暂停、打开相机、打开微信。
 
+[GitHub 仓库](https://github.com/Rczlin/better-oplus-key) · [下载最新版](https://github.com/Rczlin/better-oplus-key/releases/latest) · [自动构建](https://github.com/Rczlin/better-oplus-key/actions)
+
+从 Release 下载 `oplus-sidekey-<版本>.zip`，在 KernelSU 管理器中安装。安装此版本后，管理器可通过 GitHub 检查和安装后续更新；更新会保留已有绑定与模板，安装后重启生效。
+
 ## 普通用户：三步上手
 
 1. 在 KernelSU 管理器中安装模块 zip，重启手机。
@@ -11,11 +15,13 @@ KernelSU 模块：接管 OnePlus Ace 6 侧键，让单击、双击、长按等�
    - 第二步从内置动作里点选（截屏、播放/暂停、勿扰开关、打开指定应用……），不需要会写命令；
    - 点 **保存配置**，立即生效。
 
-不确定是否生效？在编辑器里点 **试运行** 看效果，或到 **诊断** 页刷新记录：
+不确定是否生效？在编辑器里点 **试运行** 看完整输出，或到 **诊断** 页刷新记录（“命令输出”标签可看到每次侧键触发的命令打印了什么、退出码和耗时）：
 
 - “执行成功”：动作已执行；
 - “未匹配”：这个按法没有设置动作；
 - “执行失败（数字）”：命令出错，数字是退出码。127 表示命令不存在；2 多半是命令把输出重定向到了 /data/adb 下的文件（system_server 无权读写，`input`/`am`/`cmd` 会报 Failed transaction），请去掉重定向或改为 `>/dev/null`。
+
+“概览”页会显示服务进程的 PID、运行时长、CPU 占用、内存、唤醒次数和耗电评估（每 5 秒自动刷新，页面在后台时暂停），以及今日按压统计和最近一次执行的输出。耗电评估根据 CPU 时间与唤醒次数估算：服务不按键时在内核中休眠，不持有唤醒锁。
 
 觉得长按难按、单击反应慢？到 **绑定 → 时间设置** 选“灵敏 / 标准 / 从容”。
 
@@ -52,10 +58,15 @@ window_ms=300
 ```
 
 - 组合只含 `0`（短按）和 `1`（长按），长度不限；
-- 命令为单行，最多 511 个 UTF-8 字节，以 root 执行，请只使用可信命令；
-- 时间参数为 100–800 的整数毫秒。
+- 命令最多 4095 个 UTF-8 字节，以 root 执行，请只使用可信命令；在界面里输入多行脚本时会自动编码为一行（`: sidekey-script; eval ...`），配置文件中请保持单行；
+- 时间参数为 100–800 的整数毫秒；
+- `capture_output=0` 关闭命令输出收集（默认开启，可在“绑定 → 时间设置”中切换）。若某条 `input`/`am`/`cmd` 命令只在开启时报“执行失败（2）”，关闭即可。
 
 升级模块时会自动保留已有的 `config.conf` 和 `templates.json`。
+
+模块目录中的运行文件：`log.txt`（解释日志，≤512 KB）、`events.jsonl`（原始按键事件，≤512 KB）、`output.jsonl`（命令输出，每条 ≤4 KB 输出，文件 ≤512 KB），超出后自动保留最近一半。
+
+> 0.4.0 的命令输出与 4095 字节长命令需要重新编译的守护进程（`scripts/build-daemon.ps1`）。若仍使用旧二进制，超过 511 字节的命令会被拒绝加载、诊断页也不会有命令输出。
 
 ## 开发
 
@@ -77,3 +88,17 @@ sh scripts/package-module.sh
 ```
 
 Android ARM64 守护进程使用 NDK 构建：`scripts/build-daemon.ps1`。
+
+Linux 使用 `NDK=/path/to/ndk bash scripts/build-daemon.sh`，与 Windows 脚本采用相同的 ARM64 / Android API 29 目标。
+
+## 自动构建与发布
+
+每次推送、Pull Request 或手动运行 Actions，都会执行守护进程测试、WebUI 测试与 lint，再从源码编译 ARM64 守护进程和 WebUI。安装包保存在该次运行的 Artifacts 中，保留 14 天。
+
+发布正式版时：
+
+1. 更新 `module/module.prop` 的 `version`，递增 `versionCode`（KernelSU 按此整数判断更新），并更新 `CHANGELOG.md`。
+2. 提交并推送代码，然后推送对应标签，例如 `git tag v0.4.1` 和 `git push origin v0.4.1`。
+3. Actions 检查标签与 `version` 一致后，自动创建公开 Release，上传模块 zip、`update.json` 和 `changelog.md`，并设为最新版。
+
+`updateJson` 指向最新 Release 的更新元数据；zip 和更新说明指向具体版本，确保下载内容与版本一致。首次上线版本为 `v0.4.0`。

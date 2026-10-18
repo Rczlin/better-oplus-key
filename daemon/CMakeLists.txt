@@ -88,6 +88,12 @@ add_executable(test_runtime tests/test_runtime.c)
 target_link_libraries(test_runtime PRIVATE sidekey_runtime)
 add_test(NAME runtime COMMAND test_runtime)
 
+add_library(sidekey_output STATIC src/sidekey_output.c)
+target_include_directories(sidekey_output PUBLIC include)
+add_executable(test_output tests/test_output.c)
+target_link_libraries(test_output PRIVATE sidekey_output)
+add_test(NAME output COMMAND test_output)
+
 add_library(sidekey_log STATIC src/sidekey_log.c)
 target_include_directories(sidekey_log PUBLIC include)
 add_executable(test_log tests/test_log.c)
@@ -109,26 +115,32 @@ add_test(NAME scan COMMAND test_scan)
 
 add_executable(test_daemon_config tests/test_daemon_config.c)
 target_link_libraries(test_daemon_config PRIVATE
-  sidekey_args sidekey_config sidekey_fsm sidekey_log
+  sidekey_args sidekey_config sidekey_fsm sidekey_log sidekey_output
   sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
 add_test(NAME daemon_config COMMAND test_daemon_config)
 
 add_executable(test_daemon_lifecycle tests/test_daemon_lifecycle.c)
 target_link_libraries(test_daemon_lifecycle PRIVATE
-  sidekey_args sidekey_config sidekey_fsm sidekey_log
+  sidekey_args sidekey_config sidekey_fsm sidekey_log sidekey_output
   sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
 add_test(NAME daemon_lifecycle COMMAND test_daemon_lifecycle)
+
+add_executable(test_output_capture tests/test_output_capture.c)
+target_link_libraries(test_output_capture PRIVATE
+  sidekey_args sidekey_config sidekey_fsm sidekey_log sidekey_output
+  sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
+add_test(NAME output_capture COMMAND test_output_capture)
 
 add_executable(test_reload tests/test_reload.c)
 target_include_directories(test_reload PRIVATE ../third_party/uthash)
 target_link_libraries(test_reload PRIVATE
-  sidekey_args sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
+  sidekey_args sidekey_output sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
 add_test(NAME reload COMMAND test_reload)
 
 # 守护进程可执行文件：仅在 NDK 交叉编译时生成（主机只跑单元测试）。
 if(ANDROID)
   add_executable(oplus-sidekey src/main.c)
   target_link_libraries(oplus-sidekey PRIVATE
-    sidekey_args sidekey_config sidekey_fsm sidekey_log
+    sidekey_args sidekey_config sidekey_fsm sidekey_log sidekey_output
     sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
 endif()

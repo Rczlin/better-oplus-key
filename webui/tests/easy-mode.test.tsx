@@ -116,14 +116,15 @@ describe("easy mode for non-shell users", () => {
 
   it("runs a command once on request and shows the exit status", async () => {
     let pending = "";
-    bridge((shell, cb) => { if (shell === "timeout 10 sh -c 'input keyevent 3'") { pending = cb; return true; } });
+    bridge((shell, cb) => { if (shell === "timeout 10 sh -c 'input keyevent 3' 2>&1") { pending = cb; return true; } });
     render(<App />); await ready(); navigate("绑定"); click("新增绑定");
     fireEvent.click(inDialog().getByRole("button", { name: /^返回桌面/ }));
     click("试运行"); click("运行中…");
     expect(shells.filter(s => s.includes("input keyevent 3"))).toHaveLength(1);
     expect(screen.getByRole("button", { name: "保存配置", hidden: true })).toBeDisabled();
     await act(async () => reply(pending, 1, "", "Permission denied"));
-    expect(screen.getByTestId("test-run-result")).toHaveTextContent("执行失败，退出码 1。错误输出：Permission denied");
+    expect(screen.getByTestId("test-run-result")).toHaveTextContent("执行失败，退出码 1。输出 1 行，见下方。");
+    expect(screen.getByTestId("test-run-output")).toHaveTextContent("Permission denied");
   });
 
   it("names collected app launchers and reports am errors despite exit code 0", async () => {

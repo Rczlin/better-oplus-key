@@ -6,11 +6,12 @@ import { Label } from "@/components/ui/label";
 import { ActionPicker } from "./ActionPicker";
 import { sequenceLabel, validateCommand, MAX_COMMAND_BYTES } from "@/lib/config";
 import { prefixConflicts } from "@/lib/presets";
+import { isMultiline, toEditableCommand, toStoredCommand } from "@/lib/script";
 import { cn } from "@/lib/utils";
 import type { ShellTemplate } from "@/lib/templates";
 
 export interface Binding { sequence: string; command: string }
-export interface TestRunResult { ok: boolean; message: string }
+export interface TestRunResult { ok: boolean; message: string; output?: string }
 interface Props {
   open: boolean;
   initial: Binding | null;
@@ -42,13 +43,18 @@ const encoder = new TextEncoder();
 export function BindingEditor({ open, initial, initialCommand, initialPresetId, templates = [], onUseTemplate, bindings, disabled, windowMs = 300, longPressMs = 300, onListPackages, onTestRun, onOpenChange, onSubmit, onCloseFocus }: Props) {
   const [sequence, setSequence] = useState(initial?.sequence ?? "");
   const startCommand = initial?.command ?? initialCommand ?? "";
-  const [command, setCommand] = useState(startCommand);
+  // command 为编辑器中的文本（多行脚本已解码）；stored 为实际写入配置的单行命令。
+  const [command, setCommand] = useState(() => toEditableCommand(startCommand));
   const [error, setError] = useState("");
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestRunResult | null>(null);
   const updateSequence = (s: string) => { setSequence(s); setError(""); };
   const updateCommand = (c: string) => { setCommand(c); setError(""); setTestResult(null); };
-  const bytes = encoder.encode(command).length;
+  const stored = toStoredCommand(command);
+  const multiline = isMultiline(command);
+  const bytes = encoder.encode(stored).length;
+  const lineCount = command.split("\n").length;
+  const invalidMessage = `命令最多 ${MAX_COMMAND_BYTES} 个 UTF-8 字节（多行脚本按编码后计算），不能含 NUL`;
   const conflicts = prefixConflicts(sequence, bindings, initial?.sequence);
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -56,17 +62,15 @@ export function BindingEditor({ open, initial, initialCommand, initialPresetId, 
     if (sequence !== initial?.sequence && Object.hasOwn(bindings, sequence)) {
       setError("这个按压组合已存在，请编辑原绑定或更换组合"); return;
     }
-    if (!validateCommand(command)) {
-      setError(`命令须为单行，最多 ${MAX_COMMAND_BYTES} 个 UTF-8 字节，不能含 NUL`); return;
-    }
-    try { onSubmit({ sequence, command }); }
+    if (!validateCommand(stored)) { setError(invalidMessage); return; }
+    try { onSubmit({ sequence, command: stored }); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
   };
   const testRun = async () => {
     if (!onTestRun || testing || !command) return;
-    if (!validateCommand(command)) { setError(`命令须为单行，最多 ${MAX_COMMAND_BYTES} 个 UTF-8 字节，不能含 NUL`); return; }
+    if (!validateCommand(stored)) { setError(invalidMessage); return; }
     setTesting(true); setTestResult(null);
-    try { setTestResult(await onTestRun(command)); }
+    try { setTestResult(await onTestRun(stored)); }
     catch (e) { setTestResult({ ok: false, message: e instanceof Error ? e.message : String(e) }); }
     finally { setTesting(false); }
   };
@@ -101,19 +105,22 @@ export function BindingEditor({ open, initial, initialCommand, initialPresetId, 
           </section>
           <section className="grid min-w-0 gap-3">
             <h3 className="text-sm font-semibold"><span className="mr-2 text-primary">2</span>要执行的动作</h3>
-            <ActionPicker initialCommand={startCommand} initialPresetId={initialPresetId} command={command} disabled={disabled} onCommand={updateCommand} onListPackages={onListPackages} />
-            {templates.length > 0 && <div className="grid gap-2"><Label htmlFor="binding-template">从我的模板填入</Label><select id="binding-template" value="" disabled={disabled} className="h-10 min-w-0 w-full rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" onChange={e => { const selected = templates.find(t => t.id === e.target.value); if (selected) { updateCommand(selected.command); onUseTemplate?.(selected.command); } }}><option value="">选择已保存的模板…</option>{templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>}
+            <ActionPicker initialCommand={startCommand} initialPresetId={initialPresetId} command={stored} disabled={disabled} onCommand={updateCommand} onListPackages={onListPackages} />
+            {templates.length > 0 && <div className="grid gap-2"><Label htmlFor="binding-template">从我的模板填入</Label><select id="binding-template" value="" disabled={disabled} className="h-10 min-w-0 w-full rounded-lg border bg-background px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring" onChange={e => { const selected = templates.find(t => t.id === e.target.value); if (selected) { updateCommand(toEditableCommand(selected.command)); onUseTemplate?.(selected.command); } }}><option value="">选择已保存的模板…</option>{templates.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}</select></div>}
             <div className="grid min-w-0 gap-2">
-              <Label htmlFor="binding-command">Shell 命令</Label>
-              <textarea id="binding-command" rows={3} className="w-full min-w-0 resize-y rounded-lg border bg-background p-2 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 [overflow-wrap:anywhere]" value={command} disabled={disabled} placeholder="选择上方动作会自动填写；熟悉命令也可直接输入，例如 input keyevent 3"
+              <div className="flex flex-wrap items-center justify-between gap-2"><Label htmlFor="binding-command">Shell 命令</Label>{multiline && <span data-testid="script-badge" className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] text-primary">多行脚本 · {lineCount} 行</span>}</div>
+              <textarea id="binding-command" rows={Math.min(14, Math.max(3, lineCount + 1))} spellCheck={false} autoCapitalize="off" autoCorrect="off" className="w-full min-w-0 resize-y rounded-lg border bg-background p-2 font-mono text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 [overflow-wrap:anywhere]" value={command} disabled={disabled} placeholder={"选择上方动作会自动填写；也可以直接输入命令或多行脚本，例如：\ninput keyevent 3"}
                 onChange={e => updateCommand(e.target.value)} aria-describedby="command-help" />
-              <p id="command-help" data-test="warning-root" className="text-xs leading-5 text-muted-foreground">命令以 root 权限执行，请确认内容可信。仅支持单行，最多 511 个 UTF-8 字节；中文通常占 3 字节。</p>
+              <p id="command-help" data-test="warning-root" className="text-xs leading-5 text-muted-foreground">命令以 root 权限执行，请确认内容可信。支持多行脚本（自动编码为一行保存），最多 {MAX_COMMAND_BYTES} 个 UTF-8 字节；中文通常占 3 字节。</p>
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className={cn("text-xs", bytes > MAX_COMMAND_BYTES ? "text-destructive" : "text-muted-foreground")}>{bytes} / 511 字节</p>
+                <p className={cn("text-xs", bytes > MAX_COMMAND_BYTES ? "text-destructive" : "text-muted-foreground")}>{bytes} / {MAX_COMMAND_BYTES} 字节{multiline ? "（编码后）" : ""}</p>
                 {onTestRun && <Button type="button" size="sm" variant="outline" disabled={disabled || testing || !command} onClick={() => void testRun()} title="立即执行一次这条命令，用来确认效果"><Play />{testing ? "运行中…" : "试运行"}</Button>}
               </div>
               {onTestRun && <p className="text-xs leading-5 text-amber-200/90">“试运行”会以 root 立即真实执行一次命令。</p>}
-              {testResult && <p data-testid="test-run-result" aria-live="polite" className={cn("rounded-lg p-2.5 text-xs leading-5 [overflow-wrap:anywhere]", testResult.ok ? "bg-emerald-400/10 text-emerald-300" : "bg-destructive/10 text-destructive")}>{testResult.message}</p>}
+              {testResult && <div data-testid="test-run-result" aria-live="polite" className={cn("grid min-w-0 gap-2 rounded-lg p-2.5 text-xs leading-5 [overflow-wrap:anywhere]", testResult.ok ? "bg-emerald-400/10 text-emerald-300" : "bg-destructive/10 text-destructive")}>
+                <p>{testResult.message}</p>
+                {testResult.output && <pre data-testid="test-run-output" className="max-h-60 min-w-0 max-w-full overflow-auto whitespace-pre-wrap rounded-md bg-black/30 p-2 font-mono text-[11px] leading-5 text-foreground/90 [overflow-wrap:anywhere]">{testResult.output}</pre>}
+              </div>}
             </div>
           </section>
           {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

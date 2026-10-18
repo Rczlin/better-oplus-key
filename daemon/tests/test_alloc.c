@@ -19,7 +19,7 @@ static void noop(const char *s, int len, void *ctx) { (void)s; (void)len; (void)
 int main(void) {
     sidekey_config_t c; sidekey_config_init(&c);
     CHECK(sidekey_config_parse("0=old\n", &c) == 0);
-    for (int i = 0; i < 7; i++) {
+    for (int i = 0; i < 9; i++) {
         allocations = 0; fail_at = i;
         int rc = sidekey_config_parse("0000=four\n01001=mixed\n", &c);
         CHECK(rc == SIDEKEY_CONFIG_ERR_NOMEM);

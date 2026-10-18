@@ -8,7 +8,7 @@
 
 struct sidekey_binding {
     char *seq;
-    char cmd[SIDEKEY_CMD_MAX];
+    char *cmd;          /* 按实际长度分配，避免每条绑定固定占用 SIDEKEY_CMD_MAX 字节 */
     UT_hash_handle hh;
 };
 
@@ -18,6 +18,7 @@ void sidekey_config_init(sidekey_config_t *c) {
     c->keycode = 735;
     c->fsm.long_press_ms = 300;
     c->fsm.window_ms = 300;
+    c->capture_output = 1;
 }
 
 void sidekey_config_destroy(sidekey_config_t *c) {
@@ -26,6 +27,7 @@ void sidekey_config_destroy(sidekey_config_t *c) {
     HASH_ITER(hh, c->bindings, b, next) {
         HASH_DEL(c->bindings, b);
         free(b->seq);
+        free(b->cmd);
         free(b);
     }
     sidekey_config_init(c);
@@ -78,28 +80,34 @@ static int set_binding(sidekey_config_t *c, const char *seq, const char *cmd) {
         if (b) {
             HASH_DEL(c->bindings, b);
             free(b->seq);
+            free(b->cmd);
             free(b);
             c->n_bindings--;
         }
         return 0;
     }
+    char *copy = malloc(command_len + 1);
+    if (!copy) return SIDEKEY_CONFIG_ERR_NOMEM;
+    memcpy(copy, cmd, command_len + 1);
     if (!b) {
         b = calloc(1, sizeof(*b));
-        if (!b) return SIDEKEY_CONFIG_ERR_NOMEM;
+        if (!b) { free(copy); return SIDEKEY_CONFIG_ERR_NOMEM; }
         size_t seq_len = strlen(seq);
         b->seq = malloc(seq_len + 1);
-        if (!b->seq) { free(b); return SIDEKEY_CONFIG_ERR_NOMEM; }
+        if (!b->seq) { free(b); free(copy); return SIDEKEY_CONFIG_ERR_NOMEM; }
         memcpy(b->seq, seq, seq_len + 1);
         HASH_ADD_KEYPTR(hh, c->bindings, b->seq, strlen(b->seq), b);
         if (!b->hh.tbl) {
             free(b->seq);
             free(b);
+            free(copy);
             return SIDEKEY_CONFIG_ERR_NOMEM;
         }
         c->n_bindings++;
         if (seq_len > c->max_seq_len) c->max_seq_len = seq_len;
     }
-    memcpy(b->cmd, cmd, command_len + 1);
+    free(b->cmd);
+    b->cmd = copy;
     return 0;
 }
 
@@ -129,6 +137,8 @@ int sidekey_config_parse(const char *text, sidekey_config_t *out) {
             if (!parse_int(equals, 100, 800, &next.fsm.long_press_ms)) result = -1;
         } else if (strcmp(line, "window_ms") == 0) {
             if (!parse_int(equals, 100, 800, &next.fsm.window_ms)) result = -1;
+        } else if (strcmp(line, "capture_output") == 0) {
+            if (!parse_int(equals, 0, 1, &next.capture_output)) result = -1;
         } else if (is_bind_key(line)) {
             result = set_binding(&next, line, equals);
         } else {

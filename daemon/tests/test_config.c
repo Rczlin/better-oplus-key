@@ -59,15 +59,29 @@ static void test_strict_integers(void) {
     sidekey_config_destroy(&c);
 }
 
+static void test_capture_output_key(void) {
+    sidekey_config_t c; sidekey_config_init(&c);
+    CHECK(c.capture_output == 1);
+    CHECK(sidekey_config_parse("capture_output=0\n", &c) == 0 && c.capture_output == 0);
+    CHECK(sidekey_config_parse("0=x\n", &c) == 0 && c.capture_output == 1);
+    CHECK(sidekey_config_parse("capture_output=2\n", &c) == -1);
+    sidekey_config_destroy(&c);
+}
+
 static void test_command_and_config_limits(void) {
-    char text[513]; sidekey_config_t c; sidekey_config_init(&c);
-    memset(text, 'x', 511); text[511] = 0;
-    char line[520]; snprintf(line, sizeof(line), "0=%s\n", text);
+    static char text[SIDEKEY_CMD_MAX + 1], line[SIDEKEY_CMD_MAX + 8];
+    sidekey_config_t c; sidekey_config_init(&c);
+    CHECK(SIDEKEY_CMD_MAX == 4096);
+    memset(text, 'x', 4095); text[4095] = 0;
+    snprintf(line, sizeof(line), "0=%s\n", text);
     CHECK(sidekey_config_parse(line, &c) == 0);
-    CHECK(strlen(sidekey_config_lookup(&c, "0")) == 511);
-    text[511] = 'x'; text[512] = 0; snprintf(line, sizeof(line), "0=%s\n", text);
+    CHECK(strlen(sidekey_config_lookup(&c, "0")) == 4095);
+    text[4095] = 'x'; text[4096] = 0; snprintf(line, sizeof(line), "0=%s\n", text);
     CHECK(sidekey_config_parse(line, &c) == SIDEKEY_CONFIG_ERR_TOO_LONG);
-    CHECK(strlen(sidekey_config_lookup(&c, "0")) == 511);
+    CHECK(strlen(sidekey_config_lookup(&c, "0")) == 4095);
+    /* 短命令更新长命令：内存按实际长度重新分配 */
+    CHECK(sidekey_config_parse("0=short\n0=input keyevent 3\n", &c) == 0);
+    CHECK(strcmp(sidekey_config_lookup(&c, "0"), "input keyevent 3") == 0);
     sidekey_config_destroy(&c);
 }
 
@@ -95,7 +109,7 @@ static void test_parse_failure_preserves_previous(void) {
 
 int main(void) {
     test_defaults_and_values(); test_long_and_duplicate_bindings(); test_more_than_fourteen();
-    test_strict_integers(); test_command_and_config_limits(); test_parse_failure_preserves_previous();
+    test_strict_integers(); test_command_and_config_limits(); test_capture_output_key(); test_parse_failure_preserves_previous();
     test_raw_command_and_size_boundaries();
     if (failures) { fprintf(stderr, "%d failure(s)\n", failures); return 1; }
     puts("test_config: all passed"); return 0;

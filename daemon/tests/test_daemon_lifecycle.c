@@ -53,7 +53,7 @@ int main(void) {
     if (child == 0) {
         int log_fd = open(g_log_path, O_WRONLY | O_CREAT | O_APPEND, 0600);
         if (log_fd < 0 || dup2(log_fd, 1) < 0 || dup2(log_fd, 2) < 0) _exit(20);
-        if (redirect_child_stdio() != 0) _exit(21);
+        if (setup_child_stdio(-1) != 0) _exit(21);
         struct stat null_st, fd_st;
         if (stat("/dev/null", &null_st) != 0) _exit(22);
         for (int fd = 0; fd <= 2; fd++) {
@@ -62,6 +62,23 @@ int main(void) {
         }
         _exit(0);
     }
+    CHECK(waitpid(child, &status, 0) == child);
+    CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
+    /* 捕获输出时：stdin 为 /dev/null，stdout/stderr 为管道（不是模块目录里的文件）。 */
+    int pfds[2];
+    CHECK(pipe2(pfds, O_CLOEXEC) == 0);
+    child = fork();
+    CHECK(child >= 0);
+    if (child == 0) {
+        if (setup_child_stdio(pfds[1]) != 0) _exit(30);
+        struct stat null_st, fd_st;
+        if (stat("/dev/null", &null_st) != 0) _exit(31);
+        if (fstat(0, &fd_st) != 0 || fd_st.st_rdev != null_st.st_rdev || !S_ISCHR(fd_st.st_mode)) _exit(32);
+        for (int fd = 1; fd <= 2; fd++)
+            if (fstat(fd, &fd_st) != 0 || !S_ISFIFO(fd_st.st_mode) || (fcntl(fd, F_GETFD) & FD_CLOEXEC)) _exit(33);
+        _exit(0);
+    }
+    close(pfds[0]); close(pfds[1]);
     CHECK(waitpid(child, &status, 0) == child);
     CHECK(WIFEXITED(status) && WEXITSTATUS(status) == 0);
     struct sigaction sa = {0};

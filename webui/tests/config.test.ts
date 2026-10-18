@@ -21,11 +21,11 @@ describe("dynamic config", () => {
     expect(parseConfig(text).errors.length).toBeGreaterThan(0);
   });
   it("retains errors even when a later duplicate is valid", () => {
-    expect(parseConfig("0=" + "中".repeat(171) + "\n0=valid\n").errors).toContain("0");
+    expect(parseConfig("0=" + "中".repeat(1366) + "\n0=valid\n").errors).toContain("0");
   });
   it.each([
-    ["x".repeat(510), true], ["x".repeat(511), true], ["x".repeat(512), false],
-    ["中".repeat(170), true], ["中".repeat(170) + "x", true], ["中".repeat(170) + "xy", false],
+    ["x".repeat(4094), true], ["x".repeat(4095), true], ["x".repeat(4096), false],
+    ["中".repeat(1365), true], ["中".repeat(1364) + "xxx", true], ["中".repeat(1365) + "x", false],
     ["a\nb", false], ["a\rb", false], ["a\0b", false],
   ] as const)("validates command byte/line boundaries %#", (command, accepted) => {
     expect(validateCommand(command)).toBe(accepted);

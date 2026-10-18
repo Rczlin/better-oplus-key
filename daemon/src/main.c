@@ -19,12 +19,17 @@
 #include "sidekey_fsm.h"
 #include "sidekey_input.h"
 #include "sidekey_log.h"
+#include "sidekey_output.h"
 #include "sidekey_runtime.h"
 #include "sidekey_scan.h"
 
 #define PATH_MAX_LOCAL 256
 #define LOG_LIMIT (512L * 1024L)
-#define SHELL "/system/bin/sh"
+#define OUTPUT_LOG_LIMIT (512L * 1024L)
+#ifndef SIDEKEY_SHELL
+#define SIDEKEY_SHELL "/system/bin/sh"
+#endif
+#define SHELL SIDEKEY_SHELL
 #ifndef SIDEKEY_NULL_DEVICE
 #define SIDEKEY_NULL_DEVICE "/dev/null"
 #endif
@@ -39,6 +44,7 @@ static char g_events_path[PATH_MAX_LOCAL];
 static char g_pid_path[PATH_MAX_LOCAL];
 static char g_conf_path[PATH_MAX_LOCAL];
 static char g_lock_path[PATH_MAX_LOCAL];
+static char g_output_path[PATH_MAX_LOCAL];
 
 static sidekey_config_t g_cfg;
 static sidekey_fsm_t g_fsm;
@@ -133,7 +139,7 @@ static int load_config(void) {
     int rc = sidekey_config_parse(buf, &next);
     free(buf);
     if (rc == SIDEKEY_CONFIG_ERR_TOO_LONG) {
-        log_msg("ERROR", "configuration rejected: command exceeds 511 UTF-8 bytes or configuration line is too long");
+        log_msg("ERROR", "configuration rejected: command exceeds 4095 UTF-8 bytes or configuration line is too long");
     } else if (rc == 0 && next.skipped_lines > 0) {
         char msg[128];
         snprintf(msg, sizeof(msg), "configuration skipped %d invalid or unknown line(s)",
@@ -169,12 +175,90 @@ static int load_config(void) {
 
 /* 在飞行中的子进程：pid -> 序列，用于在 SIGCHLD 回收时写出真实退出码。 */
 #define MAX_INFLIGHT 16
-typedef struct { pid_t pid; char *seq; char *action; } inflight_t;
+typedef struct {
+    pid_t pid;
+    char *seq;
+    char *action;
+    int out_fd;              /* 输出管道读端；-1 表示未捕获或已读到 EOF */
+    int captured;            /* 本次执行是否收集了输出 */
+    long long start_ms;
+} inflight_t;
 static inflight_t g_inflight[MAX_INFLIGHT];
+static sidekey_output_buf_t g_outbuf[MAX_INFLIGHT];
+
+static void clear_inflight(int i) {
+    if (g_inflight[i].out_fd >= 0) close(g_inflight[i].out_fd);
+    free(g_inflight[i].seq);
+    free(g_inflight[i].action);
+    memset(&g_inflight[i], 0, sizeof(g_inflight[i]));
+    g_inflight[i].out_fd = -1;
+    g_outbuf[i].len = 0;
+    g_outbuf[i].truncated = 0;
+}
+
+static void init_inflight(void) {
+    for (int i = 0; i < MAX_INFLIGHT; i++) {
+        memset(&g_inflight[i], 0, sizeof(g_inflight[i]));
+        g_inflight[i].out_fd = -1;
+    }
+}
+
+/* 每个 fd 每轮最多读取的字节数：持续高速输出的命令（如 yes、logcat）不会让主循环卡在读取里，
+   侧键事件仍能及时处理。 */
+#define DRAIN_BUDGET (64 * 1024)
+
+/* 非阻塞读取一个 fd；buf 为 NULL 时只丢弃。返回 1 表示 fd 已到 EOF/出错并已关闭。
+   超出容量的部分读出后丢弃，避免子进程因管道写满而阻塞。 */
+static int drain_fd(int fd, sidekey_output_buf_t *buf) {
+    char tmp[4096];
+    size_t budget = DRAIN_BUDGET;
+    while (budget > 0) {
+        ssize_t n = read(fd, tmp, sizeof(tmp));
+        if (n > 0) {
+            if (buf) sidekey_output_append(buf, tmp, (size_t)n);
+            budget = (size_t)n >= budget ? 0 : budget - (size_t)n;
+            continue;
+        }
+        if (n < 0 && errno == EINTR) continue;
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return 0;
+        close(fd);                     /* EOF 或读错误 */
+        return 1;
+    }
+    return 0;                          /* 本轮预算用完，下一轮继续 */
+}
+
+static void drain_output(int i) {
+    if (g_inflight[i].out_fd >= 0 && drain_fd(g_inflight[i].out_fd, &g_outbuf[i]))
+        g_inflight[i].out_fd = -1;
+}
+
+/* 主 shell 已退出、但后台子进程（cmd &）仍持有管道写端的读端。
+   继续读取并丢弃直到 EOF，使后台进程的写入不会因 EPIPE 失败（与旧版写 /dev/null 的行为一致）。 */
+#define MAX_ORPHANS 16
+static int g_orphans[MAX_ORPHANS] = {-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1};
+
+static void adopt_orphan(int fd) {
+    for (int i = 0; i < MAX_ORPHANS; i++) {
+        if (g_orphans[i] < 0) { g_orphans[i] = fd; return; }
+    }
+    close(fd);                         /* 表满：关闭，后台进程写入将得到 EPIPE */
+}
+
+static void drain_outputs(void) {
+    for (int i = 0; i < MAX_INFLIGHT; i++) {
+        if (g_inflight[i].pid > 0) drain_output(i);
+    }
+    for (int i = 0; i < MAX_ORPHANS; i++) {
+        if (g_orphans[i] >= 0 && drain_fd(g_orphans[i], NULL)) g_orphans[i] = -1;
+    }
+}
 
 static int remember_inflight(pid_t pid, const char *seq, const char *action) {
     for (int i = 0; i < MAX_INFLIGHT; i++) {
         if (g_inflight[i].pid == 0) {
+            g_inflight[i].out_fd = -1;
+            g_outbuf[i].len = 0;
+            g_outbuf[i].truncated = 0;
             g_inflight[i].seq = strdup(seq);
             g_inflight[i].action = strdup(action);
             if (!g_inflight[i].seq || !g_inflight[i].action) {
@@ -191,17 +275,29 @@ static int remember_inflight(pid_t pid, const char *seq, const char *action) {
     return -1;
 }
 
-/* 子进程执行命令前把 stdin/stdout/stderr 全部指向 /dev/null。
+/* 子进程执行命令前设置标准 fd：stdin 指向 /dev/null；stdout/stderr 指向输出管道，
+   没有管道时指向 /dev/null。
    input/am/cmd/settings 等命令会通过 binder 把自身的标准 fd 交给 system_server；
    继承到的 fd 若是 /data/adb 下的日志文件，SELinux 拒绝传递，命令报
-   “Failed transaction”并以退出码 2 失败。/dev/null 对所有域可用。 */
-static int redirect_child_stdio(void) {
+   “Failed transaction”并以退出码 2 失败。/dev/null 与 su 域的管道对所有域可用
+   （KernelSU WebUI 的 ksu.exec 同样依赖管道）。 */
+/* 把 fd 移到 3 以上并保留 CLOEXEC：若守护进程启动时 0–2 被关闭，pipe2 可能返回 0–2，
+   直接 dup2 会互相覆盖或丢失。 */
+static int move_above_stdio(int fd) {
+    if (fd < 0 || fd > 2) return fd;
+    int moved = fcntl(fd, F_DUPFD_CLOEXEC, 3);
+    close(fd);
+    return moved;
+}
+
+static int setup_child_stdio(int out_fd) {
     int fd = open(SIDEKEY_NULL_DEVICE, O_RDWR | O_CLOEXEC);
     if (fd < 0) return -1;
     int rc = 0;
-    for (int target = 0; target <= 2; target++) {
-        if (dup2(fd, target) < 0) rc = -1;   /* dup2 结果不带 CLOEXEC */
-    }
+    int out = out_fd >= 0 ? out_fd : fd;
+    if (dup2(fd, 0) < 0) rc = -1;              /* dup2 结果不带 CLOEXEC */
+    if (dup2(out, 1) < 0) rc = -1;
+    if (dup2(out, 2) < 0) rc = -1;
     if (fd > 2) close(fd);
     return rc;
 }
@@ -231,20 +327,56 @@ static void on_sequence(const char *seq, int len, void *ctx) {
         free(s);
         return;
     }
+    /* 输出管道：创建失败时退回 /dev/null，命令照常执行，只是不记录输出。 */
+    int fds[2] = {-1, -1};
+    if (g_cfg.capture_output) {
+        if (pipe2(fds, O_CLOEXEC) != 0) { fds[0] = -1; fds[1] = -1; }
+        fds[0] = move_above_stdio(fds[0]);
+        fds[1] = move_above_stdio(fds[1]);
+        if (fds[0] < 0 || fds[1] < 0) {
+            if (fds[0] >= 0) close(fds[0]);
+            if (fds[1] >= 0) close(fds[1]);
+            fds[0] = fds[1] = -1;
+        }
+    }
     pid_t pid = fork();
     if (pid == 0) {
         sigprocmask(SIG_SETMASK, &g_child_mask, NULL);
-        if (redirect_child_stdio() != 0) _exit(126);
+        if (setup_child_stdio(fds[1]) != 0) _exit(126);
         execl(SHELL, "sh", "-c", cmd, (char *)NULL);
         _exit(127);
     }
+    if (fds[1] >= 0) close(fds[1]);
     if (pid < 0) {
+        if (fds[0] >= 0) close(fds[0]);
         log_seq(s, cmd, -2);    /* fork 失败：记 result=-2 */
-        free(g_inflight[slot].seq);
-        free(g_inflight[slot].action);
-        memset(&g_inflight[slot], 0, sizeof(g_inflight[slot]));
-    } else g_inflight[slot].pid = pid;
+        clear_inflight(slot);
+    } else {
+        g_inflight[slot].pid = pid;
+        g_inflight[slot].start_ms = mono_ms();
+        if (fds[0] >= 0) {
+            int fl = fcntl(fds[0], F_GETFL);
+            if (fl >= 0 && fcntl(fds[0], F_SETFL, fl | O_NONBLOCK) == 0) { g_inflight[slot].out_fd = fds[0]; g_inflight[slot].captured = 1; }
+            else close(fds[0]);
+        }
+    }
     free(s);
+}
+
+static void write_output_record(int i, int code) {
+    char ts[32];
+    now_ts(ts, sizeof(ts));
+    long long duration = mono_ms() - g_inflight[i].start_ms;
+    char *rec = sidekey_output_format_record(ts, wall_ms(), g_inflight[i].seq, g_inflight[i].action,
+                                             code, duration < 0 ? 0 : duration,
+                                             g_outbuf[i].truncated, g_outbuf[i].data, g_outbuf[i].len);
+    if (!rec) { log_msg("WARN", "unable to allocate command output record"); return; }
+    if (strlen(rec) > (size_t)OUTPUT_LOG_LIMIT / 2) {  /* 最坏约 50 KiB（命令与输出全为控制字符转义），防御性检查 */
+        free(rec);
+        return;
+    }
+    sidekey_log_append(g_output_path, rec, OUTPUT_LOG_LIMIT);
+    free(rec);
 }
 
 static void reap_children(void) {
@@ -258,10 +390,14 @@ static void reap_children(void) {
             int code = WIFEXITED(status) ? WEXITSTATUS(status) : -3;
             for (int i = 0; i < MAX_INFLIGHT; i++) {
                 if (g_inflight[i].pid == p) {
+                    drain_output(i);   /* 读走已写入管道的剩余输出 */
                     log_seq(g_inflight[i].seq, g_inflight[i].action, code);
-                    free(g_inflight[i].seq);
-                    free(g_inflight[i].action);
-                    memset(&g_inflight[i], 0, sizeof(g_inflight[i]));
+                    if (g_inflight[i].captured) write_output_record(i, code);
+                    if (g_inflight[i].out_fd >= 0) {   /* 后台进程仍持有写端：转为孤儿继续丢弃读取 */
+                        adopt_orphan(g_inflight[i].out_fd);
+                        g_inflight[i].out_fd = -1;
+                    }
+                    clear_inflight(i);
                     break;
                 }
             }
@@ -304,22 +440,32 @@ static int acquire_instance_lock(void) {
     return 0;
 }
 
-/* Block only around the final flag check and atomically unblock inside ppoll. */
+/* Block only around the final flag check and atomically unblock inside ppoll.
+   同时等待输入设备与所有命令输出管道；管道可读时返回，由主循环读取。 */
 static int wait_for_input(int timeout_ms) {
     sigset_t blocked, previous;
     sigemptyset(&blocked);
     sigaddset(&blocked, SIGHUP); sigaddset(&blocked, SIGTERM);
     sigaddset(&blocked, SIGINT); sigaddset(&blocked, SIGCHLD);
     if (sigprocmask(SIG_BLOCK, &blocked, &previous) != 0) return -1;
-    struct pollfd pfd = {.fd = g_dev_fd, .events = POLLIN};
+    struct pollfd pfd[1 + MAX_INFLIGHT + MAX_ORPHANS];
+    nfds_t n = 0;
+    pfd[n++] = (struct pollfd){.fd = g_dev_fd, .events = POLLIN};
+    for (int i = 0; i < MAX_INFLIGHT; i++) {
+        if (g_inflight[i].pid > 0 && g_inflight[i].out_fd >= 0)
+            pfd[n++] = (struct pollfd){.fd = g_inflight[i].out_fd, .events = POLLIN};
+    }
+    for (int i = 0; i < MAX_ORPHANS; i++) {
+        if (g_orphans[i] >= 0) pfd[n++] = (struct pollfd){.fd = g_orphans[i], .events = POLLIN};
+    }
     struct timespec timeout = {timeout_ms / 1000, (timeout_ms % 1000) * 1000000L};
     int rc = 0;
     if (!g_stop && !g_reload && !g_child_done)
-        rc = ppoll(&pfd, 1, timeout_ms < 0 ? NULL : &timeout, &previous);
+        rc = ppoll(pfd, n, timeout_ms < 0 ? NULL : &timeout, &previous);
     int error = errno;
     if (sigprocmask(SIG_SETMASK, &previous, NULL) != 0) return -1;
     if (rc < 0 && error != EINTR) { errno = error; return -1; }
-    if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) { errno = ENODEV; return -1; }
+    if (pfd[0].revents & (POLLERR | POLLHUP | POLLNVAL)) { errno = ENODEV; return -1; }
     return 0;
 }
 
@@ -330,7 +476,9 @@ static int setup_paths(const char *moddir) {
     int n4 = snprintf(g_pid_path, sizeof(g_pid_path), "%s/daemon.pid", moddir);
     int n5 = snprintf(g_conf_path, sizeof(g_conf_path), "%s/config.conf", moddir);
     int n6 = snprintf(g_lock_path, sizeof(g_lock_path), "%s/daemon.lock", moddir);
-    if (n1 < 0 || n2 < 0 || n3 < 0 || n4 < 0 || n5 < 0 || n6 < 0) return -1;
+    int n7 = snprintf(g_output_path, sizeof(g_output_path), "%s/output.jsonl", moddir);
+    if (n1 < 0 || n2 < 0 || n3 < 0 || n4 < 0 || n5 < 0 || n6 < 0 || n7 < 0) return -1;
+    if ((size_t)n7 >= sizeof(g_output_path)) return -1;
     if ((size_t)n1 >= sizeof(g_moddir) || (size_t)n2 >= sizeof(g_log_path) ||
         (size_t)n3 >= sizeof(g_events_path) || (size_t)n4 >= sizeof(g_pid_path) ||
         (size_t)n5 >= sizeof(g_conf_path) || (size_t)n6 >= sizeof(g_lock_path)) return -1;
@@ -373,6 +521,7 @@ int main(int argc, char **argv) {
         return 2;
     }
     sidekey_config_init(&g_cfg);
+    init_inflight();
     sigprocmask(SIG_SETMASK, NULL, &g_child_mask);
 
     /* 每个信号显式设置 flags，不依赖残留状态。
@@ -456,6 +605,7 @@ int main(int argc, char **argv) {
             }
         }
         if (g_child_done) reap_children();
+        drain_outputs();
 
         int timeout;
         int rc = sidekey_input_drain(&input, &g_fsm, g_cfg.keycode, &input_io, &timeout);

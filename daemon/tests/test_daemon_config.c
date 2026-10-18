@@ -50,7 +50,7 @@ int main(void) {
     CHECK(memcmp(&before, &g_cfg, sizeof(before)) == 0);
     char log[2048];
     read_log(log, sizeof(log));
-    CHECK(strstr(log, "511 UTF-8 bytes") != NULL);
+    CHECK(strstr(log, "4095 UTF-8 bytes") != NULL);
     CHECK(strstr(log, "rejected") != NULL);
 
     write_fixture("unknown_key=ignored\n0=echo replacement\n");
