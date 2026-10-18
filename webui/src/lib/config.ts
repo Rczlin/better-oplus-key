@@ -6,9 +6,12 @@ export interface ParsedConfig {
   windowMs: number;
   /** 是否收集命令输出（capture_output）；缺省为 true */
   captureOutput?: boolean;
+  /** 流体云提示（island_notify）：0 关闭，1 每次执行，2 仅失败；缺省为 0 */
+  islandNotify?: IslandNotifyMode;
   bindings: Record<string, string>;
   errors: string[];
 }
+export type IslandNotifyMode = 0 | 1 | 2;
 export const MAX_COMMAND_BYTES = 4095;
 export const MAX_CONFIG_BYTES = 65536;
 const encoder = new TextEncoder();
@@ -40,6 +43,8 @@ export function parseConfig(text: string): ParsedConfig {
     const key = line.slice(0, eq), value = line.slice(eq + 1);
     if (key === "capture_output") {
       if (value === "0" || value === "1") out.captureOutput = value === "1"; else out.errors.push(key);
+    } else if (key === "island_notify") {
+      if (value === "0" || value === "1" || value === "2") out.islandNotify = Number(value) as IslandNotifyMode; else out.errors.push(key);
     } else if (["keycode", "long_press_ms", "window_ms"].includes(key)) {
       const n = value.length > 0 && !/[^0-9]/.test(value) ? Number(value) : NaN;
       if (!(key === "keycode" ? validKeycode(n) : validateTiming(n))) out.errors.push(key);
@@ -59,6 +64,10 @@ export function serializeConfig(c: Omit<ParsedConfig, "errors">): string {
   if (!validateTiming(c.longPressMs) || !validateTiming(c.windowMs)) throw new Error("时间必须是 100–800 之间的整数");
   const lines = [`keycode=${c.keycode}`, `long_press_ms=${c.longPressMs}`, `window_ms=${c.windowMs}`];
   if (c.captureOutput === false) lines.push("capture_output=0");
+  if (c.islandNotify !== undefined && c.islandNotify !== 0) {
+    if (c.islandNotify !== 1 && c.islandNotify !== 2) throw new Error("流体云提示设置无效");
+    lines.push(`island_notify=${c.islandNotify}`);
+  }
   for (const [seq, cmd] of Object.entries(c.bindings).sort(([a], [b]) => a.length - b.length || a.localeCompare(b))) {
     if (!validateSequence(seq)) throw new Error("组合只能包含短按和长按");
     if (!validateCommand(cmd)) throw new Error(`命令须为单行，最多 ${MAX_COMMAND_BYTES} 个 UTF-8 字节，不能含 NUL`);

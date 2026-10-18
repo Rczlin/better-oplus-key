@@ -139,6 +139,8 @@ int sidekey_config_parse(const char *text, sidekey_config_t *out) {
             if (!parse_int(equals, 100, 800, &next.fsm.window_ms)) result = -1;
         } else if (strcmp(line, "capture_output") == 0) {
             if (!parse_int(equals, 0, 1, &next.capture_output)) result = -1;
+        } else if (strcmp(line, "island_notify") == 0) {
+            if (!parse_int(equals, 0, 2, &next.island_notify)) result = -1;
         } else if (is_bind_key(line)) {
             result = set_binding(&next, line, equals);
         } else {

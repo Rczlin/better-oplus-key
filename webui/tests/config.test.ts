@@ -2,6 +2,24 @@ import { describe, it, expect } from "vitest";
 import { parseConfig, serializeConfig, validateTiming, validateCommand, validateSequence, sequenceLabel } from "../src/lib/config";
 import { parseExplainLog } from "../src/lib/log";
 
+describe("island_notify", () => {
+  it("defaults to off and is omitted when saving", () => {
+    expect(parseConfig("0=x\n").islandNotify).toBeUndefined();
+    const text = serializeConfig({ keycode: 735, longPressMs: 300, windowMs: 300, bindings: { "0": "x" } });
+    expect(text).not.toContain("island_notify");
+    expect(serializeConfig({ keycode: 735, longPressMs: 300, windowMs: 300, islandNotify: 0, bindings: {} })).not.toContain("island_notify");
+  });
+  it.each([[1, "island_notify=1"], [2, "island_notify=2"]] as const)("round-trips mode %s", (mode, line) => {
+    const text = serializeConfig({ keycode: 735, longPressMs: 300, windowMs: 300, islandNotify: mode, bindings: { "0": "x" } });
+    expect(text.split("\n")).toContain(line);
+    expect(parseConfig(text).islandNotify).toBe(mode);
+    expect(parseConfig(text).errors).toEqual([]);
+  });
+  it.each(["island_notify=3", "island_notify=", "island_notify=1x"])("rejects %s", text => {
+    expect(parseConfig(text).errors).toContain("island_notify");
+  });
+});
+
 describe("dynamic config", () => {
   it("round-trips arbitrary bindings, keycode and exact command bytes", () => {
     const bindings = Object.fromEntries(Array.from({ length: 20 }, (_, i) => ["0".repeat(i + 1), "  echo '中=a'  "]));

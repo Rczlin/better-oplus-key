@@ -68,6 +68,18 @@ static void test_capture_output_key(void) {
     sidekey_config_destroy(&c);
 }
 
+static void test_island_notify_key(void) {
+    sidekey_config_t c; sidekey_config_init(&c);
+    CHECK(c.island_notify == 0);
+    CHECK(sidekey_config_parse("island_notify=1\n", &c) == 0 && c.island_notify == 1);
+    CHECK(sidekey_config_parse("island_notify=2\n", &c) == 0 && c.island_notify == 2);
+    CHECK(sidekey_config_parse("0=x\n", &c) == 0 && c.island_notify == 0);
+    CHECK(sidekey_config_parse("island_notify=3\n", &c) == -1);
+    CHECK(sidekey_config_parse("island_notify=\n", &c) == -1);
+    CHECK(c.island_notify == 0 && c.skipped_lines == 0);
+    sidekey_config_destroy(&c);
+}
+
 static void test_command_and_config_limits(void) {
     static char text[SIDEKEY_CMD_MAX + 1], line[SIDEKEY_CMD_MAX + 8];
     sidekey_config_t c; sidekey_config_init(&c);
@@ -109,7 +121,7 @@ static void test_parse_failure_preserves_previous(void) {
 
 int main(void) {
     test_defaults_and_values(); test_long_and_duplicate_bindings(); test_more_than_fourteen();
-    test_strict_integers(); test_command_and_config_limits(); test_capture_output_key(); test_parse_failure_preserves_previous();
+    test_strict_integers(); test_command_and_config_limits(); test_capture_output_key(); test_island_notify_key(); test_parse_failure_preserves_previous();
     test_raw_command_and_size_boundaries();
     if (failures) { fprintf(stderr, "%d failure(s)\n", failures); return 1; }
     puts("test_config: all passed"); return 0;
