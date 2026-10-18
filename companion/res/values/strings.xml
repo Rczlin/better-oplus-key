@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">侧键流体云提示</string>
+    <string name="channel_name">侧键执行结果</string>
+    <string name="channel_description">侧键命令执行结束后在流体云中短暂显示结果</string>
+    <string name="test_title">流体云提示测试</string>
+    <string name="test_body">看到这条提示说明流体云提示已可用</string>
+</resources>

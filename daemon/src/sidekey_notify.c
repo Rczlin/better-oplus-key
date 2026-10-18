@@ -50,8 +50,9 @@ int sidekey_notify_prepare(sidekey_notify_msg_t *m, const char *seq, const char 
     sidekey_notify_label(cmd, m->label, sizeof(m->label));
     snprintf(m->code, sizeof(m->code), "%d", code);
     snprintf(m->duration, sizeof(m->duration), "%lld", duration_ms < 0 ? 0LL : duration_ms);
+    /* -f 0x10000020：FLAG_RECEIVER_FOREGROUND | FLAG_INCLUDE_STOPPED_PACKAGES（伴生应用从未启动过也能收到） */
     char *args[] = {
-        "cmd", "activity", "broadcast", "--user", "0", "-f", "0x10000000",
+        "cmd", "activity", "broadcast", "--user", "0", "-f", "0x10000020",
         "-a", SIDEKEY_NOTIFY_ACTION, "-n", SIDEKEY_NOTIFY_COMPONENT,
         "--es", "seq", m->seq, "--es", "label", m->label,
         "--ei", "code", m->code, "--el", "duration_ms", m->duration, NULL

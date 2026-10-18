@@ -48,7 +48,8 @@ root shell 的 `cmd notification post` 无法设置这些标志，只能产生�
   - `sidekey_notify_label(cmd, out, cap)`：多行脚本包装（`: sidekey-script;` 前缀）显示为“多行脚本”；
     其他命令取前 96 字节，回退到完整 UTF-8 字符边界，被截断时追加 “…”；
   - `sidekey_notify_prepare(msg, seq, cmd, code, duration_ms)`：生成 argv（不经过 shell，无需转义）：
-    `cmd activity broadcast --user 0 -f 0x10000000 -a <ACTION> -n <PKG>/.IslandReceiver --es seq … --es label … --ei code … --el duration_ms …`。
+    `cmd activity broadcast --user 0 -f 0x10000020 -a <ACTION> -n <PKG>/.IslandReceiver --es seq … --es label … --ei code … --el duration_ms …`。
+    `-f 0x10000020` = FLAG_RECEIVER_FOREGROUND | FLAG_INCLUDE_STOPPED_PACKAGES：刚安装、从未启动过的伴生应用处于 stopped 状态，不加该标志收不到广播。
     seq 超过 32 个字符时截断。
 - `reap_children` 在写完解释日志与输出记录后，若需要提示，则 fork 一个通知子进程 `execv("/system/bin/cmd", argv)`；
   stdin/stdout/stderr 指向 /dev/null，不进入 inflight 表、不写日志与 output.jsonl；被同一个 `waitpid(-1)` 回收。

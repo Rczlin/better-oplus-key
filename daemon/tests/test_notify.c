@@ -53,7 +53,7 @@ static void test_label(void) {
 static void test_prepare(void) {
     sidekey_notify_msg_t m;
     CHECK(sidekey_notify_prepare(&m, "00", "input keyevent 120", 127, 42) == 0);
-    const char *want[] = {"cmd", "activity", "broadcast", "--user", "0", "-f", "0x10000000",
+    const char *want[] = {"cmd", "activity", "broadcast", "--user", "0", "-f", "0x10000020",
         "-a", SIDEKEY_NOTIFY_ACTION, "-n", SIDEKEY_NOTIFY_COMPONENT,
         "--es", "seq", "00", "--es", "label", "input keyevent 120",
         "--ei", "code", "127", "--el", "duration_ms", "42", NULL};

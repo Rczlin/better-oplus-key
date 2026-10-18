@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 侧键流体云提示的伴生应用：无界面，只接收守护进程（root）发来的广播并发出通知。 -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="io.github.rczlin.sidekey.island">
+
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Android 16 Live Updates（ColorOS 16 流体云）所需的普通权限 -->
+    <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@drawable/ic_sidekey"
+        android:allowBackup="false">
+        <!-- signature 级权限：只有 root/shell 等系统调用方能发送，普通应用无法伪造提示 -->
+        <receiver
+            android:name=".IslandReceiver"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL">
+            <intent-filter>
+                <action android:name="io.github.rczlin.sidekey.island.SHOW" />
+            </intent-filter>
+        </receiver>
+    </application>
+</manifest>
