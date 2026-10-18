@@ -28,6 +28,12 @@ jobs:
         run: python3 -m unittest discover -s scripts/tests -v
       - name: Test daemon
         run: bash scripts/test-host.sh
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Test companion app logic
+        run: bash scripts/test-companion.sh
       - name: Test and build WebUI
         working-directory: webui
         run: |
@@ -35,12 +41,14 @@ jobs:
           npm test -- --testTimeout=15000
           npm run lint
           npm run build
-      - name: Install Android NDK
-        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;28.2.13676358"'
+      - name: Install Android NDK and SDK components
+        run: '"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;28.2.13676358" "platforms;android-36" "build-tools;36.0.0"'
       - name: Build ARM64 daemon
         run: |
           export NDK="$ANDROID_HOME/ndk/28.2.13676358"
           bash scripts/build-daemon.sh
+      - name: Build fluid cloud companion app
+        run: bash scripts/build-companion.sh
       - name: Package module
         run: sh scripts/package-module.sh
       - name: Prepare release assets

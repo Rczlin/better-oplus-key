@@ -4,3 +4,5 @@
 keycode=735
 long_press_ms=300
 window_ms=300
+# 流体云提示：0=关闭，1=每次执行，2=仅失败（需 ColorOS 16 与模块自带的伴生应用）。
+# island_notify=0
