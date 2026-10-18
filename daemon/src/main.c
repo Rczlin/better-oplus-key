@@ -479,6 +479,9 @@ static int island_spawn(void) {
         if (logfd < 0) logfd = open(SIDEKEY_NULL_DEVICE, O_WRONLY | O_CLOEXEC);
         if (logfd < 0 || dup2(fds[0], 0) < 0 || dup2(logfd, 1) < 0 || dup2(logfd, 2) < 0) _exit(126);
         island_fill_env();
+        /* 内存紧张时优先回收发布进程（下一次提示会重新拉起），不挤占前台应用。 */
+        int adj = open("/proc/self/oom_score_adj", O_WRONLY | O_CLOEXEC);
+        if (adj >= 0) { (void)!write(adj, "800", 3); close(adj); }
         execv(g_notify_bin, sv.argv);
         _exit(127);
     }

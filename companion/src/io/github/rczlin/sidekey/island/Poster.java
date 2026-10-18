@@ -92,6 +92,7 @@ public final class Poster {
             out("island.error", describe(t));
         }
         System.out.flush();
+        startIdleWatchdog();
         java.io.BufferedReader in = new java.io.BufferedReader(
                 new java.io.InputStreamReader(System.in, java.nio.charset.StandardCharsets.UTF_8));
         int failures = 0;
@@ -103,6 +104,7 @@ public final class Poster {
                 break;
             }
             if (line == null) break;
+            lastActive = android.os.SystemClock.elapsedRealtime();
             PosterArgs a = PosterArgs.parseLine(line);
             if (a == null) continue;
             try {
@@ -119,6 +121,29 @@ public final class Poster {
         }
         System.out.flush();
         System.exit(0);
+    }
+
+    /** 空闲超过该时长自动退出，归还内存；守护进程在下一次提示时再拉起。 */
+    static final long IDLE_EXIT_MS = 10 * 60 * 1000L;
+    private static volatile long lastActive = android.os.SystemClock.elapsedRealtime();
+
+    /** 阻塞读管道时不占 CPU；看门狗每分钟醒一次（不持唤醒锁，休眠时随系统一起停）。 */
+    private static void startIdleWatchdog() {
+        Thread t = new Thread(() -> {
+            for (;;) {
+                try {
+                    Thread.sleep(60 * 1000L);
+                } catch (InterruptedException e) {
+                    return;
+                }
+                if (android.os.SystemClock.elapsedRealtime() - lastActive >= IDLE_EXIT_MS) {
+                    System.out.flush();
+                    System.exit(0);
+                }
+            }
+        }, "idle-watchdog");
+        t.setDaemon(true);
+        t.start();
     }
 
     private static String describe(Throwable t) {
