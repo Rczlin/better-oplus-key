@@ -7,6 +7,7 @@ fi
 set_perm "$MODPATH/bin/oplus-sidekey" 0 0 0755
 set_perm "$MODPATH/service.sh" 0 0 0755
 set_perm "$MODPATH/uninstall.sh" 0 0 0755
+set_perm "$MODPATH/island.sh" 0 0 0755
 
 # 升级安装时 $MODPATH 指向 modules_update 下的新目录，旧配置留在 modules 下。
 # 先迁移用户已有的绑定与模板，避免升级后被默认配置覆盖。
@@ -22,6 +23,13 @@ done
 
 if [ ! -f "$MODPATH/config.conf" ]; then
   cp "$MODPATH/config.conf.default" "$MODPATH/config.conf"
+fi
+# 流体云提示伴生应用：系统运行中安装时直接装好；失败不影响模块，开机后 service.sh 会重试。
+if [ -f "$MODPATH/companion/island.apk" ]; then
+  case "$(sh "$MODPATH/island.sh" install 2>/dev/null)" in
+    *island=installed*) ui_print "- 已安装流体云提示组件" ;;
+    *) ui_print "- 流体云提示组件将在重启后安装" ;;
+  esac
 fi
 ui_print "- 安装完成，重启后生效"
 ui_print "- 在 KernelSU 管理器中打开本模块即可配置侧键"

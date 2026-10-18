@@ -18,3 +18,12 @@ fi
 # 命令报 “Failed transaction” 并以退出码 2 失败。
 rm -f "$MODDIR/daemon.stderr"
 "$DAEMON" "$MODDIR" </dev/null >/dev/null 2>&1 &
+
+# 流体云提示伴生应用：开机完成后安装/更新并授予通知权限（幂等：APK 未变时只做授权）。
+if [ -f "$MODDIR/island.sh" ]; then
+  (
+    i=0
+    until [ "$(getprop sys.boot_completed)" = "1" ] || [ "$i" -ge 120 ]; do sleep 2; i=$((i + 1)); done
+    sh "$MODDIR/island.sh" install
+  ) </dev/null >/dev/null 2>&1 &
+fi

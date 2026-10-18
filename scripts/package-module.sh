@@ -6,6 +6,9 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 MODULE="$ROOT/module"
 VERSION=$(sed -n 's/^version=//p' "$MODULE/module.prop")
 [ -n "$VERSION" ] || { echo "version not found in module.prop" >&2; exit 1; }
+if [ ! -f "$MODULE/companion/island.apk" ]; then
+  echo "warning: module/companion/island.apk missing; run scripts/build-companion.sh (流体云提示将不可用)" >&2
+fi
 DIST="$ROOT/dist"
 OUT="$DIST/oplus-sidekey-$VERSION.zip"
 rm -rf "$DIST"

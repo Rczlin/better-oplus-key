@@ -7,6 +7,10 @@ $Prop = Join-Path $Module "module.prop"
 $Version = (Get-Content $Prop | Where-Object { $_ -match '^version=' }) -replace '^version=', ''
 if (-not $Version) { throw "version not found in module.prop" }
 
+if (-not (Test-Path (Join-Path $Module "companion/island.apk"))) {
+  Write-Warning "module/companion/island.apk missing; run scripts/build-companion.sh (流体云提示将不可用)"
+}
+
 $Dist = Join-Path $Root "dist"
 $Out = Join-Path $Dist "oplus-sidekey-$Version.zip"
 

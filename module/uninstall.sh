@@ -19,4 +19,11 @@ for p in /proc/[0-9]*; do
     kill -TERM "$pid" 2>/dev/null
   fi
 done
+
+# 3) 卸载流体云提示伴生应用（系统服务可能尚未就绪，后台等待开机完成）。
+(
+  i=0
+  until [ "$(getprop sys.boot_completed)" = "1" ] || [ "$i" -ge 120 ]; do sleep 2; i=$((i + 1)); done
+  pm uninstall io.github.rczlin.sidekey.island
+) </dev/null >/dev/null 2>&1 &
 exit 0
