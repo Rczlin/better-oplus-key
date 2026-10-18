@@ -19,6 +19,7 @@
 #include "sidekey_fsm.h"
 #include "sidekey_input.h"
 #include "sidekey_log.h"
+#include "sidekey_notify.h"
 #include "sidekey_output.h"
 #include "sidekey_runtime.h"
 #include "sidekey_scan.h"
@@ -30,6 +31,9 @@
 #define SIDEKEY_SHELL "/system/bin/sh"
 #endif
 #define SHELL SIDEKEY_SHELL
+#ifndef SIDEKEY_NOTIFY_BIN
+#define SIDEKEY_NOTIFY_BIN "/system/bin/cmd"
+#endif
 #ifndef SIDEKEY_NULL_DEVICE
 #define SIDEKEY_NULL_DEVICE "/dev/null"
 #endif
@@ -45,6 +49,9 @@ static char g_pid_path[PATH_MAX_LOCAL];
 static char g_conf_path[PATH_MAX_LOCAL];
 static char g_lock_path[PATH_MAX_LOCAL];
 static char g_output_path[PATH_MAX_LOCAL];
+
+/* 流体云提示的广播程序；测试中替换为记录参数的脚本。 */
+static const char *g_notify_bin = SIDEKEY_NOTIFY_BIN;
 
 static sidekey_config_t g_cfg;
 static sidekey_fsm_t g_fsm;
@@ -379,6 +386,22 @@ static void write_output_record(int i, int code) {
     free(rec);
 }
 
+/* 流体云提示：fork 一个不经过 shell 的 `cmd activity broadcast` 子进程，把结果发给伴生应用。
+   子进程不进入 inflight 表，不写解释日志与 output.jsonl，由 reap_children 的 waitpid(-1) 回收。
+   伴生应用未安装时广播无接收者，cmd 静默返回。 */
+static void dispatch_notify(const char *seq, const char *action, int code, long long duration_ms) {
+    sidekey_notify_msg_t msg;
+    if (sidekey_notify_prepare(&msg, seq, action, code, duration_ms) != 0) return;
+    pid_t pid = fork();
+    if (pid == 0) {
+        sigprocmask(SIG_SETMASK, &g_child_mask, NULL);
+        if (setup_child_stdio(-1) != 0) _exit(126);
+        execv(g_notify_bin, msg.argv);
+        _exit(127);
+    }
+    if (pid < 0) log_msg("WARN", "island notification not sent: fork failed");
+}
+
 static void reap_children(void) {
     int status;
     pid_t p;
@@ -393,6 +416,10 @@ static void reap_children(void) {
                     drain_output(i);   /* 读走已写入管道的剩余输出 */
                     log_seq(g_inflight[i].seq, g_inflight[i].action, code);
                     if (g_inflight[i].captured) write_output_record(i, code);
+                    if (sidekey_notify_wanted(g_cfg.island_notify, code)) {
+                        long long duration = mono_ms() - g_inflight[i].start_ms;
+                        dispatch_notify(g_inflight[i].seq, g_inflight[i].action, code, duration);
+                    }
                     if (g_inflight[i].out_fd >= 0) {   /* 后台进程仍持有写端：转为孤儿继续丢弃读取 */
                         adopt_orphan(g_inflight[i].out_fd);
                         g_inflight[i].out_fd = -1;

@@ -137,6 +137,12 @@ target_link_libraries(test_output_capture PRIVATE
   sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
 add_test(NAME output_capture COMMAND test_output_capture)
 
+add_executable(test_notify_dispatch tests/test_notify_dispatch.c)
+target_link_libraries(test_notify_dispatch PRIVATE
+  sidekey_args sidekey_config sidekey_fsm sidekey_log sidekey_output sidekey_notify
+  sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
+add_test(NAME notify_dispatch COMMAND test_notify_dispatch)
+
 add_executable(test_reload tests/test_reload.c)
 target_include_directories(test_reload PRIVATE ../third_party/uthash)
 target_link_libraries(test_reload PRIVATE
