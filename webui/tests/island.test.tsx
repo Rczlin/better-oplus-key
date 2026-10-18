@@ -73,8 +73,10 @@ describe("fluid cloud setting", () => {
     render(<App />); await ready(); navigate("绑定");
     const group = screen.getByRole("radiogroup", { name: "流体云提示" });
     expect(within(group).getByRole("radio", { name: "关闭" })).toBeChecked();
+    expect(screen.getByTestId("island-off-hint")).toHaveTextContent("实际按侧键不会提示");
     expect(await screen.findByTestId("island-status")).toHaveTextContent("组件已就绪");
     fireEvent.click(within(group).getByRole("radio", { name: "仅失败" }));
+    expect(screen.queryByTestId("island-off-hint")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /保存配置/ }));
     await waitFor(() => expect(configPayload).toContain("island_notify=2"));
     fireEvent.click(within(group).getByRole("radio", { name: "每次执行" }));

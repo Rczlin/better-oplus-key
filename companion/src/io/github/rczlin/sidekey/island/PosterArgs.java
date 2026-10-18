@@ -11,6 +11,8 @@ public final class PosterArgs {
     public static final int SHOW_DEFAULT = 5;
 
     public boolean test;
+    /** 常驻模式：从标准输入逐行读取请求（守护进程使用）。 */
+    public boolean serve;
     public String seq = "";
     public String label = "";
     public int code;
@@ -27,6 +29,7 @@ public final class PosterArgs {
         for (int i = 0; i < args.length; i++) {
             String k = args[i];
             if ("--test".equals(k)) { a.test = true; continue; }
+            if ("--serve".equals(k)) { a.serve = true; continue; }
             if (i + 1 >= args.length) break;
             String v = args[i + 1];
             switch (k) {
@@ -38,6 +41,23 @@ public final class PosterArgs {
                 default: break;
             }
         }
+        return a;
+    }
+
+    /**
+     * 常驻模式的一行请求：seq\tlabel\tcode\tduration_ms\tshow_seconds（守护进程已把摘要里的制表符换成空格）。
+     * 空行或字段不足返回 null；数字格式错误按缺省值处理。
+     */
+    public static PosterArgs parseLine(String line) {
+        if (line == null) return null;
+        String[] f = line.split("\t", -1);
+        if (f.length < 5 || f[0].isEmpty()) return null;
+        PosterArgs a = new PosterArgs();
+        a.seq = f[0];
+        a.label = f[1];
+        a.code = (int) parseLong(f[2], 0);
+        a.durationMs = Math.max(0, parseLong(f[3], 0));
+        a.showSeconds = clampShow(parseLong(f[4], SHOW_DEFAULT));
         return a;
     }
 

@@ -50,6 +50,41 @@ static void test_label(void) {
     CHECK(sidekey_notify_label(NULL, out, sizeof(out)) == 0 && out[0] == 0);
 }
 
+static void test_server(void) {
+    sidekey_notify_server_t sv;
+    CHECK(sidekey_notify_server_prepare(&sv, "/m/companion/island.apk") == 0);
+    const char *want[] = {"app_process", "-Djava.class.path=/m/companion/island.apk", "/system/bin",
+        "--nice-name=sidekey-island", "io.github.rczlin.sidekey.island.Poster", "--serve", NULL};
+    size_t i = 0;
+    for (; want[i]; i++) CHECK(sv.argv[i] && strcmp(sv.argv[i], want[i]) == 0);
+    CHECK(sv.argv[i] == NULL);
+    CHECK(sidekey_notify_server_prepare(&sv, NULL) == -1);
+
+    char line[SIDEKEY_NOTIFY_LINE_MAX];
+    CHECK(sidekey_notify_request_line(line, sizeof(line), "00", "input keyevent 120", 0, 42, 5) > 0);
+    CHECK(strcmp(line, "00\tinput keyevent 120\t0\t42\t5\n") == 0);
+    /* 摘要中的制表符/换行不能破坏行协议；时长限制、负耗时归零 */
+    CHECK(sidekey_notify_request_line(line, sizeof(line), "1", "a\tb\nc\rd", -3, -9, 99) > 0);
+    CHECK(strcmp(line, "1\ta b c d\t-3\t0\t15\n") == 0);
+    CHECK(sidekey_notify_request_line(line, sizeof(line), "0x\t", "x", 0, 0, 0) > 0);
+    CHECK(strncmp(line, "000\tx\t0\t0\t2\n", 12) == 0);
+    char longcmd[300]; memset(longcmd, 'a', 299); longcmd[299] = 0;
+    CHECK(sidekey_notify_request_line(line, sizeof(line), "0", longcmd, 0, 0, 5) > 0);
+    CHECK(strlen(line) < sizeof(line));
+    char small[8];
+    CHECK(sidekey_notify_request_line(small, sizeof(small), "0", "abcdef", 0, 0, 5) == -1);
+    CHECK(sidekey_notify_request_line(line, sizeof(line), NULL, "x", 0, 0, 5) == -1);
+
+    const char env[] = "PATH=/bin\0BOOTCLASSPATH=/a.jar:/b.jar\0BOOT=x\0EMPTY=\0";
+    CHECK(strcmp(sidekey_notify_env_find(env, sizeof(env) - 1, "BOOTCLASSPATH"), "/a.jar:/b.jar") == 0);
+    CHECK(strcmp(sidekey_notify_env_find(env, sizeof(env) - 1, "BOOT"), "x") == 0);
+    CHECK(strcmp(sidekey_notify_env_find(env, sizeof(env) - 1, "EMPTY"), "") == 0);
+    CHECK(sidekey_notify_env_find(env, sizeof(env) - 1, "PAT") == NULL);
+    CHECK(sidekey_notify_env_find(env, sizeof(env) - 1, "MISSING") == NULL);
+    const char cut[] = {'A', '=', '1'};
+    CHECK(sidekey_notify_env_find(cut, sizeof(cut), "A") == NULL);
+}
+
 static void test_prepare(void) {
     sidekey_notify_msg_t m;
     CHECK(sidekey_notify_prepare(&m, "/data/adb/modules/oplus-sidekey/companion/island.apk",
@@ -81,7 +116,7 @@ static void test_prepare(void) {
 }
 
 int main(void) {
-    test_wanted(); test_label(); test_prepare();
+    test_wanted(); test_label(); test_prepare(); test_server();
     if (failures) { fprintf(stderr, "%d failure(s)\n", failures); return 1; }
     puts("test_notify: all passed"); return 0;
 }

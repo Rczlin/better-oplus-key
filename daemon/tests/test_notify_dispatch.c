@@ -1,4 +1,4 @@
-/* 端到端：命令被回收后按 island_notify 派发流体云提示；通知程序替换为记录参数的脚本。 */
+/* 端到端：命令被回收后按 island_notify 派发流体云提示；常驻发布进程替换为记录参数与请求行的脚本。 */
 #define _GNU_SOURCE
 #define SIDEKEY_SHELL "/bin/sh"
 #include <stdio.h>
@@ -14,6 +14,7 @@ static int failures;
 #define CHECK(c) do { if (!(c)) { fprintf(stderr, "FAIL %d: %s\n", __LINE__, #c); failures++; } } while (0)
 
 static char g_calls_path[256];
+static char g_spawn_path[256];
 
 static char *slurp(const char *path) {
     static char buf[65536];
@@ -31,7 +32,8 @@ static int count(const char *hay, const char *needle) {
     return n;
 }
 
-static int calls(void) { return count(slurp(g_calls_path), "---\n"); }
+static int calls(void) { return count(slurp(g_calls_path), "\n"); }
+static int spawns(void) { return count(slurp(g_spawn_path), "---\n"); }
 
 /* 回收命令子进程与通知子进程，直到没有在飞命令且通知调用数达到 expect（或超时）。 */
 static void settle(int expect) {
@@ -63,55 +65,80 @@ int main(void) {
     char script[256];
     snprintf(script, sizeof(script), "%s/fake-cmd", dir);
     snprintf(g_calls_path, sizeof(g_calls_path), "%s/calls", dir);
+    char apkdir[300];
+    snprintf(apkdir, sizeof(apkdir), "%s/companion", dir);
+    CHECK(mkdir(apkdir, 0755) == 0);
+    strcat(apkdir, "/island.apk");
+    FILE *apkf = fopen(apkdir, "wb"); fputs("apk", apkf); fclose(apkf);
+    snprintf(g_spawn_path, sizeof(g_spawn_path), "%s/spawns", dir);
     FILE *f = fopen(script, "wb");
-    fprintf(f, "#!/bin/sh\nprintf '%%s\\n' \"$0\" \"$@\" >> '%s'\necho --- >> '%s'\n", g_calls_path, g_calls_path);
+    fprintf(f, "#!/bin/sh\nprintf '%%s\\n' \"$0\" \"$@\" >> '%s'\necho --- >> '%s'\n"
+               "while IFS= read -r l; do printf '%%s\\n' \"$l\" >> '%s'; done\n",
+            g_spawn_path, g_spawn_path, g_calls_path);
     fclose(f);
     chmod(script, 0755);
     g_notify_bin = script;
 
-    /* 模式 1：成功与失败都提示；未绑定按法不提示 */
+    /* 模式 1：加载配置即预先拉起一个发布进程；成功与失败都提示；未绑定按法不提示 */
     write_config("island_notify=1\n0=true\n00=exit 5\n");
+    island_sync();
+    CHECK(g_island_pid > 0 && g_island_fd >= 0);
     on_sequence("0", 1, NULL);
     settle(1);
     CHECK(calls() == 1);
-    char *c = slurp(g_calls_path);
+    char *sp = slurp(g_spawn_path);
     char cp[400];
     snprintf(cp, sizeof(cp), "-Djava.class.path=%s/companion/island.apk\n/system/bin\n", dir);
-    CHECK(strstr(c, cp) != NULL);
-    CHECK(strstr(c, "io.github.rczlin.sidekey.island.Poster\n") != NULL);
-    CHECK(strstr(c, "--seq\n0\n--label\ntrue\n--code\n0\n--duration\n") != NULL);
-    CHECK(strstr(c, "--show\n5\n") != NULL);
+    CHECK(strstr(sp, cp) != NULL);
+    CHECK(strstr(sp, "io.github.rczlin.sidekey.island.Poster\n--serve\n") != NULL);
+    CHECK(strstr(slurp(g_calls_path), "0\ttrue\t0\t") != NULL);
+    CHECK(strstr(slurp(g_calls_path), "\t5\n") != NULL);
 
     on_sequence("00", 2, NULL);
     settle(2);
     CHECK(calls() == 2);
-    CHECK(strstr(slurp(g_calls_path), "--seq\n00\n--label\nexit 5\n--code\n5\n") != NULL);
+    CHECK(strstr(slurp(g_calls_path), "00\texit 5\t5\t") != NULL);
+    CHECK(spawns() == 1);   /* 复用同一个发布进程 */
 
     on_sequence("1", 1, NULL);   /* 无绑定：dropped */
     settle(2);
     CHECK(calls() == 2);
 
-    /* 通知子进程不产生解释日志行、不写 output.jsonl 记录 */
+    /* 通知不产生解释日志行、不写 output.jsonl 记录 */
     char *log = slurp(g_log_path);
     CHECK(count(log, " seq=") == 3);
     CHECK(count(log, "WARN") == 0);
     CHECK(count(slurp(g_output_path), "\"seq\":") == 2);
 
-    /* 模式 2：仅失败 */
+    /* 发布进程意外退出：下一条提示自动重新拉起 */
+    kill(g_island_pid, SIGKILL);
+    for (int i = 0; i < 100 && g_island_pid > 0; i++) { usleep(10000); g_child_done = 1; reap_children(); }
+    CHECK(g_island_pid == 0 && g_island_fd < 0);
+    on_sequence("0", 1, NULL);
+    settle(3);
+    CHECK(calls() == 3 && spawns() == 2);
+
+    /* 模式 2：仅失败；重新加载配置沿用已有发布进程 */
     unlink(g_calls_path);
     write_config("island_notify=2\nisland_seconds=12\n0=true\n00=exit 7\n");
+    island_sync();
+    CHECK(spawns() == 2);
     on_sequence("0", 1, NULL);
     settle(0);
     CHECK(calls() == 0);
     on_sequence("00", 2, NULL);
     settle(1);
-    CHECK(calls() == 1 && strstr(slurp(g_calls_path), "--code\n7\n") != NULL);
-    CHECK(strstr(slurp(g_calls_path), "--show\n12\n") != NULL);
+    CHECK(calls() == 1 && strstr(slurp(g_calls_path), "00\texit 7\t7\t") != NULL);
+    CHECK(strstr(slurp(g_calls_path), "\t12\n") != NULL);
 
-    /* 模式 0（缺省）：不提示 */
+    /* 模式 0（缺省）：不提示，发布进程收到 EOF 退出 */
     unlink(g_calls_path);
     write_config("00=exit 7\n");
     CHECK(g_cfg.island_notify == 0);
+    island_sync();
+    CHECK(g_island_fd < 0);
+    for (int i = 0; i < 200 && g_island_pid > 0; i++) { usleep(10000); g_child_done = 1; reap_children(); }
+    CHECK(g_island_pid == 0);
     on_sequence("00", 2, NULL);
     settle(0);
     CHECK(calls() == 0);
@@ -123,7 +150,9 @@ int main(void) {
     write_config("island_notify=1\n0=true\n");
     on_sequence("0", 1, NULL);
     settle(0);
-    CHECK(count(slurp(g_log_path), " seq=0 action=true result=0") == 3);
+    CHECK(count(slurp(g_log_path), " seq=0 action=true result=0") == 4);
+    island_close();
+    for (int i = 0; i < 100 && g_island_pid > 0; i++) { usleep(10000); g_child_done = 1; reap_children(); }
 
     for (int i = 0; i < MAX_INFLIGHT; i++) CHECK(g_inflight[i].pid == 0);
     sidekey_config_destroy(&g_cfg);

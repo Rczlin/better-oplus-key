@@ -1,4 +1,5 @@
 #define _GNU_SOURCE
+#include <dirent.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <libevdev/libevdev.h>
@@ -386,22 +387,134 @@ static void write_output_record(int i, int code) {
     free(rec);
 }
 
-/* 流体云提示：fork 一个不经过 shell 的 app_process 子进程，由伴生 APK 中的 Poster 以 root 发布通知。
-   子进程不进入 inflight 表，不写解释日志与 output.jsonl，由 reap_children 的 waitpid(-1) 回收。
-   伴生应用未安装时 Poster 失败退出，守护进程不受影响。 */
-static void dispatch_notify(const char *seq, const char *action, int code, long long duration_ms) {
-    static sidekey_notify_msg_t msg;   /* 约 1.3 KiB，放静态区；fork 后子进程持有自己的副本 */
+/* 流体云提示：常驻的 root 发布进程（app_process 运行伴生 APK 中的 Poster --serve）。
+   守护进程只向它的标准输入写一行请求；ART 虚拟机只在启用提示时冷启动一次，
+   之后每条提示几毫秒内送达，不再与刚执行的命令争抢 CPU。
+   发布进程不进入 inflight 表，不写解释日志与 output.jsonl；它退出时由 reap_children 回收，下次提示再拉起。 */
+static pid_t g_island_pid = 0;
+static int g_island_fd = -1;          /* 发布进程标准输入的写端（非阻塞、CLOEXEC） */
+static char g_island_log[PATH_MAX_LOCAL + 16];
+
+/* app_process 依赖 init 导出的 BOOTCLASSPATH 等变量；守护进程的环境若缺少，就从 zygote 的初始环境补齐。 */
+static const char *const ISLAND_ENV_KEYS[] = {
+    "BOOTCLASSPATH", "DEX2OATBOOTCLASSPATH", "SYSTEMSERVERCLASSPATH", "STANDALONE_SYSTEMSERVER_JARS",
+    "ANDROID_ROOT", "ANDROID_DATA", "ANDROID_ART_ROOT", "ANDROID_I18N_ROOT", "ANDROID_TZDATA_ROOT",
+    "ANDROID_STORAGE", "ANDROID_ASSETS", NULL
+};
+
+static size_t read_small_file(const char *path, char *buf, size_t cap) {
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    if (fd < 0) return 0;
+    size_t got = 0;
+    while (got < cap) {
+        ssize_t n = read(fd, buf + got, cap - got);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) break;
+        got += (size_t)n;
+    }
+    close(fd);
+    return got;
+}
+
+/* 仅在发布进程的子进程里调用（fork 后、exec 前，守护进程单线程，可安全分配内存）。 */
+static void island_fill_env(void) {
+    int missing = 0;
+    for (int i = 0; ISLAND_ENV_KEYS[i]; i++) if (!getenv(ISLAND_ENV_KEYS[i])) missing = 1;
+    if (!missing) return;
+    static char env[256 * 1024];
+    size_t len = 0;
+    DIR *d = opendir("/proc");
+    if (d) {
+        struct dirent *e;
+        while (len == 0 && (e = readdir(d)) != NULL) {
+            if (e->d_name[0] < '1' || e->d_name[0] > '9') continue;
+            char path[64], cmd[32];
+            snprintf(path, sizeof(path), "/proc/%s/cmdline", e->d_name);
+            size_t n = read_small_file(path, cmd, sizeof(cmd) - 1);
+            cmd[n] = '\0';
+            if (strcmp(cmd, "zygote64") != 0 && strcmp(cmd, "zygote") != 0) continue;
+            snprintf(path, sizeof(path), "/proc/%s/environ", e->d_name);
+            len = read_small_file(path, env, sizeof(env));
+        }
+        closedir(d);
+    }
+    for (int i = 0; ISLAND_ENV_KEYS[i]; i++) {
+        if (getenv(ISLAND_ENV_KEYS[i])) continue;
+        const char *v = sidekey_notify_env_find(env, len, ISLAND_ENV_KEYS[i]);
+        if (v) setenv(ISLAND_ENV_KEYS[i], v, 0);
+    }
+    if (!getenv("ANDROID_ROOT")) setenv("ANDROID_ROOT", "/system", 0);
+    if (!getenv("ANDROID_DATA")) setenv("ANDROID_DATA", "/data", 0);
+    if (!getenv("ANDROID_ART_ROOT")) setenv("ANDROID_ART_ROOT", "/apex/com.android.art", 0);
+    if (!getenv("ANDROID_I18N_ROOT")) setenv("ANDROID_I18N_ROOT", "/apex/com.android.i18n", 0);
+    if (!getenv("ANDROID_TZDATA_ROOT")) setenv("ANDROID_TZDATA_ROOT", "/apex/com.android.tzdata", 0);
+}
+
+static void island_close(void) {
+    if (g_island_fd >= 0) close(g_island_fd);   /* 发布进程读到 EOF 后自行退出 */
+    g_island_fd = -1;
+}
+
+static int island_spawn(void) {
+    static sidekey_notify_server_t sv;
     char apk[PATH_MAX_LOCAL + sizeof(SIDEKEY_NOTIFY_APK_REL)];
     snprintf(apk, sizeof(apk), "%s%s", g_moddir, SIDEKEY_NOTIFY_APK_REL);
-    if (sidekey_notify_prepare(&msg, apk, seq, action, code, duration_ms, g_cfg.island_seconds) != 0) return;
+    if (access(apk, R_OK) != 0) return -1;
+    if (sidekey_notify_server_prepare(&sv, apk) != 0) return -1;
+    int fds[2];
+    if (pipe2(fds, O_CLOEXEC) != 0) return -1;
+    fds[0] = move_above_stdio(fds[0]);
+    fds[1] = move_above_stdio(fds[1]);
+    if (fds[0] < 0 || fds[1] < 0) {
+        if (fds[0] >= 0) close(fds[0]);
+        if (fds[1] >= 0) close(fds[1]);
+        return -1;
+    }
+    snprintf(g_island_log, sizeof(g_island_log), "%s/island.log", g_moddir);
     pid_t pid = fork();
     if (pid == 0) {
         sigprocmask(SIG_SETMASK, &g_child_mask, NULL);
-        if (setup_child_stdio(-1) != 0) _exit(126);
-        execv(g_notify_bin, msg.argv);
+        /* 标准输入是请求管道；输出写 island.log（每次拉起时截断），供诊断查看发布结果。 */
+        int logfd = open(g_island_log, O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0644);
+        if (logfd < 0) logfd = open(SIDEKEY_NULL_DEVICE, O_WRONLY | O_CLOEXEC);
+        if (logfd < 0 || dup2(fds[0], 0) < 0 || dup2(logfd, 1) < 0 || dup2(logfd, 2) < 0) _exit(126);
+        island_fill_env();
+        execv(g_notify_bin, sv.argv);
         _exit(127);
     }
-    if (pid < 0) log_msg("WARN", "island notification not sent: fork failed");
+    close(fds[0]);
+    if (pid < 0) { close(fds[1]); return -1; }
+    int fl = fcntl(fds[1], F_GETFL);
+    if (fl >= 0) fcntl(fds[1], F_SETFL, fl | O_NONBLOCK);
+    g_island_pid = pid;
+    g_island_fd = fds[1];
+    return 0;
+}
+
+/* 启用提示时预先拉起发布进程，第一次按键也不必等虚拟机冷启动；关闭时让它退出。 */
+static void island_sync(void) {
+    if (g_cfg.island_notify == SIDEKEY_NOTIFY_OFF) { island_close(); return; }
+    if (g_island_fd < 0 && island_spawn() != 0)
+        log_msg("WARN", "island poster not started: companion APK missing or fork failed");
+}
+
+static int island_write(const char *line, size_t len) {
+    if (g_island_fd < 0) return -1;
+    ssize_t n;
+    do n = write(g_island_fd, line, len); while (n < 0 && errno == EINTR);
+    return n == (ssize_t)len ? 0 : -1;
+}
+
+static void dispatch_notify(const char *seq, const char *action, int code, long long duration_ms) {
+    char line[SIDEKEY_NOTIFY_LINE_MAX];
+    int n = sidekey_notify_request_line(line, sizeof(line), seq, action, code, duration_ms, g_cfg.island_seconds);
+    if (n <= 0) return;
+    if (g_island_fd < 0) island_spawn();
+    if (island_write(line, (size_t)n) == 0) return;
+    /* 发布进程已退出（EPIPE）或卡住：换一个新进程重发一次 */
+    island_close();
+    if (island_spawn() == 0 && island_write(line, (size_t)n) == 0) return;
+    log_msg("WARN", "island notification not sent: poster unavailable");
 }
 
 static void reap_children(void) {
@@ -413,6 +526,16 @@ static void reap_children(void) {
         p = waitpid(-1, &status, WNOHANG);
         if (p > 0) {
             int code = WIFEXITED(status) ? WEXITSTATUS(status) : -3;
+            if (p == g_island_pid) {
+                g_island_pid = 0;
+                island_close();
+                if (code != 0) {
+                    char msg[96];
+                    snprintf(msg, sizeof(msg), "island poster exited (%d); see island.log", code);
+                    log_msg("WARN", msg);
+                }
+                continue;
+            }
             for (int i = 0; i < MAX_INFLIGHT; i++) {
                 if (g_inflight[i].pid == p) {
                     drain_output(i);   /* 读走已写入管道的剩余输出 */
@@ -534,6 +657,7 @@ static void release_and_exit(int code) {
         close(g_dev_fd);
         g_dev_fd = -1;
     }
+    island_close();
     remove_pid();
     log_msg("INFO", "daemon stopped");
     exit(code);
@@ -576,6 +700,7 @@ int main(int argc, char **argv) {
         fail_exit("config.conf missing or invalid; not grabbing device");
     }
     log_msg("INFO", "config loaded");
+    island_sync();
 
     char devpath[PATH_MAX_LOCAL];
     int matched = 0;
@@ -629,6 +754,7 @@ int main(int argc, char **argv) {
                 input.discard_pending = 1;
                 input.prev_pressed = libevdev_get_event_value(g_dev, EV_KEY, (unsigned)g_cfg.keycode) == 1;
                 log_msg("INFO", "config reloaded");
+                island_sync();
             } else {
                 log_msg("ERROR", "config reload failed; keeping previous config");
             }

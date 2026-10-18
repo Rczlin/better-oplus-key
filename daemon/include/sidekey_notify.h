@@ -44,4 +44,23 @@ size_t sidekey_notify_label(const char *cmd, char *out, size_t cap);
 int sidekey_notify_prepare(sidekey_notify_msg_t *m, const char *apk, const char *seq, const char *cmd,
                            int code, long long duration_ms, int show_seconds);
 
+/* 常驻发布进程：守护进程启动一次 `Poster --serve`，此后每条提示只向它的标准输入写一行，
+   省掉每次按键都冷启动一个 ART 虚拟机（数百毫秒、并与刚执行的命令抢 CPU）。 */
+typedef struct {
+    char classpath[sizeof("-Djava.class.path=") + SIDEKEY_NOTIFY_APK_MAX];
+    char *argv[8];
+} sidekey_notify_server_t;
+
+/* 填充 `app_process -Djava.class.path=<apk> /system/bin --nice-name=sidekey-island Poster --serve`。 */
+int sidekey_notify_server_prepare(sidekey_notify_server_t *s, const char *apk);
+
+/* 请求行：seq\tlabel\tcode\tduration_ms\tshow_seconds\n。动作摘要中的制表符与换行替换为空格。
+   返回写入字节数（不含 NUL）；参数无效或容量不足返回 -1。 */
+#define SIDEKEY_NOTIFY_LINE_MAX (SIDEKEY_NOTIFY_SEQ_MAX + SIDEKEY_NOTIFY_LABEL_CAP + 64)
+int sidekey_notify_request_line(char *out, size_t cap, const char *seq, const char *cmd,
+                                int code, long long duration_ms, int show_seconds);
+
+/* 从 environ 风格的块（NUL 分隔的 KEY=VALUE）中找出 key 的值；用于从 zygote 补齐 app_process 需要的环境。 */
+const char *sidekey_notify_env_find(const char *block, size_t len, const char *key);
+
 #endif

@@ -1,7 +1,7 @@
 id=oplus-sidekey
 name=OnePlus Side Key
-version=0.5.2
-versionCode=7
+version=0.5.3
+versionCode=8
 author=rlin
 updateJson=https://github.com/Rczlin/better-oplus-key/releases/latest/download/update.json
 description=接管 OnePlus Ace 6 侧键：单击、双击、长按等组合一键执行截屏、播放控制、打开应用等动作，内置常用模板与多行脚本，可在 WebUI 中点选配置并查看命令输出与服务耗电，支持在 ColorOS 16 流体云中显示执行结果

@@ -27,6 +27,10 @@ public final class Poster {
 
     public static void main(String[] argv) {
         PosterArgs a = PosterArgs.parse(argv);
+        if (a.serve) {
+            serve();
+            return;
+        }
         int status = 0;
         try {
             post(a);
@@ -42,25 +46,93 @@ public final class Poster {
         System.exit(status);
     }
 
-    private static void post(PosterArgs a) throws Exception {
-        if (Looper.myLooper() == null) Looper.prepareMainLooper();
-        Context ctx = systemContext().createPackageContext(PKG, Context.CONTEXT_IGNORE_SECURITY);
-        int uid = ctx.getApplicationInfo().uid;
-        int userId = uid / 100000;
-        Object nm = notificationService();
+    /** 一次性准备好的发布环境：上下文、通知服务、渠道与晋升开关。 */
+    private static final class Session {
+        final Context ctx;
+        final int uid;
+        final int userId;
+        final Object nm;
+        final boolean allowed;
 
-        invoke(nm, "createNotificationChannelsForPackage", PKG, uid,
-                parceledList(Collections.singletonList(IslandNotification.channel(ctx))));
-        try {
-            invoke(nm, "deleteNotificationChannel", PKG, IslandNotification.LEGACY_CHANNEL);
-        } catch (Throwable ignored) {
-            // 旧渠道删不掉不影响发布
+        Session() throws Exception {
+            if (Looper.myLooper() == null) Looper.prepareMainLooper();
+            ctx = systemContext().createPackageContext(PKG, Context.CONTEXT_IGNORE_SECURITY);
+            uid = ctx.getApplicationInfo().uid;
+            userId = uid / 100000;
+            nm = notificationService();
+            invoke(nm, "createNotificationChannelsForPackage", PKG, uid,
+                    parceledList(Collections.singletonList(IslandNotification.channel(ctx))));
+            try {
+                invoke(nm, "deleteNotificationChannel", PKG, IslandNotification.LEGACY_CHANNEL);
+            } catch (Throwable ignored) {
+                // 旧渠道删不掉不影响发布
+            }
+            allowed = enablePromotion(nm, uid);
         }
-        boolean allowed = enablePromotion(nm, uid);
 
-        Notification n = IslandNotification.build(ctx, a);
-        invoke(nm, "enqueueNotificationWithTag", PKG, "android", IslandNotification.TAG,
-                IslandNotification.ID, n, userId);
+        Notification enqueue(PosterArgs a) throws Exception {
+            Notification n = IslandNotification.build(ctx, a);
+            invoke(nm, "enqueueNotificationWithTag", PKG, "android", IslandNotification.TAG,
+                    IslandNotification.ID, n, userId);
+            return n;
+        }
+    }
+
+    /**
+     * 常驻模式：守护进程每条提示写一行请求，读到 EOF（守护进程退出或关闭提示）时结束。
+     * 虚拟机与通知服务连接只初始化一次，提示几毫秒内送达。
+     * island.log 只记录启动与失败，长期运行也不会增长。
+     */
+    private static void serve() {
+        Session session = null;
+        try {
+            session = new Session();
+            out("island", "ready");
+        } catch (Throwable t) {
+            out("island.error", describe(t));
+        }
+        System.out.flush();
+        java.io.BufferedReader in = new java.io.BufferedReader(
+                new java.io.InputStreamReader(System.in, java.nio.charset.StandardCharsets.UTF_8));
+        int failures = 0;
+        for (;;) {
+            String line;
+            try {
+                line = in.readLine();
+            } catch (java.io.IOException e) {
+                break;
+            }
+            if (line == null) break;
+            PosterArgs a = PosterArgs.parseLine(line);
+            if (a == null) continue;
+            try {
+                if (session == null) session = new Session();
+                session.enqueue(a);
+                failures = 0;
+            } catch (Throwable t) {
+                out("island.error", describe(t));
+                session = null;   // 下一条重新连接（例如 system_server 重启）
+                if (!fallbackBroadcast(a)) out("island.path", "none");
+                if (++failures >= 20) break;   // 持续失败：退出，守护进程下次提示再拉起
+            }
+            System.out.flush();
+        }
+        System.out.flush();
+        System.exit(0);
+    }
+
+    private static String describe(Throwable t) {
+        Throwable root = t;
+        while (root.getCause() != null) root = root.getCause();
+        return root.getClass().getSimpleName() + ": " + root.getMessage();
+    }
+
+    private static void post(PosterArgs a) throws Exception {
+        Session s = new Session();
+        Object nm = s.nm;
+        int userId = s.userId;
+        boolean allowed = s.allowed;
+        Notification n = s.enqueue(a);
         out("island", "sent");
         out("island.path", "root");
         if (!a.test) return;

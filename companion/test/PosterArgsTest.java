@@ -29,6 +29,17 @@ public final class PosterArgsTest {
         check(PosterArgs.parse(new String[] {"--code", "-3"}).code == -3, "signal code");
         check(PosterArgs.parse(new String[] {"--seq"}).seq.isEmpty(), "dangling key");
         check(PosterArgs.parse(null) != null, "null args");
+        check(PosterArgs.parse(new String[] {"--serve"}).serve, "serve flag");
+
+        PosterArgs l = PosterArgs.parseLine("00\t截屏 --code\t5\t1234\t8");
+        check(l != null && "00".equals(l.seq) && "截屏 --code".equals(l.label), "line fields");
+        check(l != null && l.code == 5 && l.durationMs == 1234 && l.showSeconds == 8 && !l.test, "line numbers");
+        PosterArgs e = PosterArgs.parseLine("1\t\t-3\t-1\t99");
+        check(e != null && e.label.isEmpty() && e.code == -3 && e.durationMs == 0 && e.showSeconds == 15, "line clamp");
+        check(PosterArgs.parseLine("0\tx\tbad\tbad\tbad").showSeconds == 5, "line bad numbers");
+        check(PosterArgs.parseLine("") == null, "empty line");
+        check(PosterArgs.parseLine("0\tx\t0") == null, "short line");
+        check(PosterArgs.parseLine(null) == null, "null line");
 
         if (failures > 0) { System.err.println(failures + " failure(s)"); System.exit(1); }
         System.out.println("PosterArgsTest: all passed");

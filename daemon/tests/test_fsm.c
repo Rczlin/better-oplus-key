@@ -290,7 +290,62 @@ static void test_configured_sequences(void) {
     sidekey_fsm_destroy(&f);
 }
 
+/* 长按是没有后续的完整组合时，按住满阈值即触发，松开不再重复触发。 */
+static void test_long_press_fires_while_held(void) {
+    sidekey_fsm_cfg_t cfg = {300, 300};
+    rec_t r = {.bindings = {"1", "00"}};
+    sidekey_fsm_t f = {0};
+    CHECK(sidekey_fsm_init_with_match(&f, &cfg, 8, configured_match, rec_cb, &r) == 0);
+    sidekey_fsm_key(&f, 1, 1000);
+    CHECK(sidekey_fsm_tick(&f, 1100) == 1300);   /* 告诉调用方何时唤醒 */
+    CHECK(r.n == 0);
+    CHECK(sidekey_fsm_tick(&f, 1299) == 1300 && r.n == 0);
+    CHECK(sidekey_fsm_tick(&f, 1300) == -1);
+    CHECK(r.n == 1 && strcmp(r.seqs[0], "1") == 0);
+    sidekey_fsm_tick(&f, 1800);
+    sidekey_fsm_key(&f, 0, 2000);                /* 松开被吞掉 */
+    CHECK(sidekey_fsm_tick(&f, 5000) == -1 && r.n == 1);
+    gesture(&f, "00", 6000);                      /* 之后的手势不受影响 */
+    CHECK(r.n == 2 && strcmp(r.seqs[1], "00") == 0);
+    sidekey_fsm_destroy(&f);
+
+    /* 第二次按压的长按（01）同样提前触发 */
+    r = (rec_t){.bindings = {"0", "01"}};
+    CHECK(sidekey_fsm_init_with_match(&f, &cfg, 8, configured_match, rec_cb, &r) == 0);
+    gesture(&f, "0", 0);
+    sidekey_fsm_key(&f, 1, 150);
+    CHECK(sidekey_fsm_tick(&f, 200) == 450);
+    sidekey_fsm_tick(&f, 450);
+    CHECK(r.n == 1 && strcmp(r.seqs[0], "01") == 0);
+    sidekey_fsm_key(&f, 0, 900);
+    sidekey_fsm_tick(&f, 3000);
+    CHECK(r.n == 1);
+    sidekey_fsm_destroy(&f);
+
+    /* 长按还有后续（10）时必须等松开 */
+    r = (rec_t){.bindings = {"1", "10"}};
+    CHECK(sidekey_fsm_init_with_match(&f, &cfg, 8, configured_match, rec_cb, &r) == 0);
+    sidekey_fsm_key(&f, 1, 0);
+    CHECK(sidekey_fsm_tick(&f, 100) == -1);
+    sidekey_fsm_tick(&f, 1000);
+    CHECK(r.n == 0);
+    sidekey_fsm_key(&f, 0, 1000);
+    sidekey_fsm_tick(&f, 1300);
+    CHECK(r.n == 1 && strcmp(r.seqs[0], "1") == 0);
+    sidekey_fsm_destroy(&f);
+
+    /* 短按在阈值前松开：照常记为短按 */
+    r = (rec_t){.bindings = {"1", "0"}};
+    CHECK(sidekey_fsm_init_with_match(&f, &cfg, 8, configured_match, rec_cb, &r) == 0);
+    sidekey_fsm_key(&f, 1, 0);
+    CHECK(sidekey_fsm_tick(&f, 50) == 300);
+    sidekey_fsm_key(&f, 0, 80);
+    CHECK(r.n == 1 && strcmp(r.seqs[0], "0") == 0);
+    sidekey_fsm_destroy(&f);
+}
+
 int main(void) {
+    test_long_press_fires_while_held();
     test_configured_sequences();
     test_single_short_tap();
     test_single_long_press();

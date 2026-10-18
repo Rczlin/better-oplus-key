@@ -34,6 +34,7 @@ typedef struct {
     int pressed;
     long long press_t;
     long long release_t;   /* 上次松开时间，用于窗口期；无松开则 -1 */
+    int swallow_release;   /* 长按已在按住期间提前触发：忽略随后的松开 */
 } sidekey_fsm_t;
 
 /* 初始化前零初始化，重新初始化前须 destroy；reset 保留匹配器和缓冲区。 */
@@ -48,7 +49,9 @@ void sidekey_fsm_destroy(sidekey_fsm_t *f);
 /* 键按下/松开事件；t_ms 为单调时钟毫秒。 */
 void sidekey_fsm_key(sidekey_fsm_t *f, int pressed, long long t_ms);
 
-/* 周期性调用，检查窗口期是否到期。返回下一次需要唤醒的绝对时间（ms），无则 -1。 */
+/* 周期性调用，检查窗口期是否到期。返回下一次需要唤醒的绝对时间（ms），无则 -1。
+   按住期间：若再记一次长按即构成没有后续的完整组合，按住满 long_press_ms 时立即触发，
+   不必等松开；返回该时刻供调用方定时唤醒。 */
 long long sidekey_fsm_tick(sidekey_fsm_t *f, long long t_ms);
 
 #endif

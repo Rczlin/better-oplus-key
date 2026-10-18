@@ -65,3 +65,50 @@ int sidekey_notify_prepare(sidekey_notify_msg_t *m, const char *apk, const char 
     memcpy(m->argv, args, sizeof(args));
     return 0;
 }
+
+int sidekey_notify_server_prepare(sidekey_notify_server_t *s, const char *apk) {
+    if (!s || !apk || strlen(apk) >= SIDEKEY_NOTIFY_APK_MAX) return -1;
+    memset(s, 0, sizeof(*s));
+    snprintf(s->classpath, sizeof(s->classpath), "-Djava.class.path=%s", apk);
+    char *args[] = {"app_process", s->classpath, "/system/bin", "--nice-name=sidekey-island",
+                    SIDEKEY_NOTIFY_MAIN, "--serve", NULL};
+    _Static_assert(sizeof(args) / sizeof(args[0]) <= sizeof(s->argv) / sizeof(s->argv[0]), "argv too small");
+    memcpy(s->argv, args, sizeof(args));
+    return 0;
+}
+
+int sidekey_notify_request_line(char *out, size_t cap, const char *seq, const char *cmd,
+                                int code, long long duration_ms, int show_seconds) {
+    if (!out || cap == 0 || !seq || !cmd) return -1;
+    char label[SIDEKEY_NOTIFY_LABEL_CAP];
+    sidekey_notify_label(cmd, label, sizeof(label));
+    for (char *p = label; *p; p++) if (*p == '\t' || *p == '\n' || *p == '\r') *p = ' ';
+    char s[SIDEKEY_NOTIFY_SEQ_MAX + 1];
+    size_t seq_len = strlen(seq);
+    if (seq_len > SIDEKEY_NOTIFY_SEQ_MAX) seq_len = SIDEKEY_NOTIFY_SEQ_MAX;
+    memcpy(s, seq, seq_len);
+    s[seq_len] = '\0';
+    for (char *p = s; *p; p++) if (*p != '0' && *p != '1') *p = '0';
+    if (show_seconds < SIDEKEY_NOTIFY_SHOW_MIN) show_seconds = SIDEKEY_NOTIFY_SHOW_MIN;
+    if (show_seconds > SIDEKEY_NOTIFY_SHOW_MAX) show_seconds = SIDEKEY_NOTIFY_SHOW_MAX;
+    int n = snprintf(out, cap, "%s\t%s\t%d\t%lld\t%d\n", s, label, code,
+                     duration_ms < 0 ? 0LL : duration_ms, show_seconds);
+    if (n < 0 || (size_t)n >= cap) { out[0] = '\0'; return -1; }
+    return n;
+}
+
+const char *sidekey_notify_env_find(const char *block, size_t len, const char *key) {
+    if (!block || !key) return NULL;
+    size_t klen = strlen(key);
+    size_t i = 0;
+    while (i < len) {
+        const char *entry = block + i;
+        size_t elen = strnlen(entry, len - i);
+        if (elen > klen && memcmp(entry, key, klen) == 0 && entry[klen] == '=') {
+            if (i + elen >= len) return NULL;   /* 没有 NUL 结尾的残缺条目 */
+            return entry + klen + 1;
+        }
+        i += elen + 1;
+    }
+    return NULL;
+}
