@@ -166,6 +166,12 @@ describe("daemon control commands", () => {
     expect(c).toContain("echo failed");
   });
 
+  it("stop leaves a stop.request marker before signalling so the supervisor does not respawn", () => {
+    const c = stopCmd(M);
+    expect(c.indexOf(`touch ${M}/stop.request`)).toBeGreaterThanOrEqual(0);
+    expect(c.indexOf(`touch ${M}/stop.request`)).toBeLessThan(c.indexOf("kill -TERM"));
+  });
+
   it("compares the pid exe with the daemon path inside the module dir", () => {
     expect(statusCmd(M)).toContain(`"${M}/bin/oplus-sidekey"`);
   });

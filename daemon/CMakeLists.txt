@@ -74,6 +74,8 @@ else()
   target_link_libraries(LIBEVDEV_DEP INTERFACE PkgConfig::LIBEVDEV)
 endif()
 
+add_library(sidekey_cgroup STATIC src/sidekey_cgroup.c)
+target_include_directories(sidekey_cgroup PUBLIC include)
 add_library(sidekey_input STATIC src/sidekey_input.c)
 target_include_directories(sidekey_input PUBLIC include)
 target_link_libraries(sidekey_input PUBLIC sidekey_fsm LIBEVDEV_DEP)
@@ -122,37 +124,45 @@ add_test(NAME scan COMMAND test_scan)
 add_executable(test_daemon_config tests/test_daemon_config.c)
 target_link_libraries(test_daemon_config PRIVATE
   sidekey_args sidekey_config sidekey_fsm sidekey_log sidekey_output sidekey_notify
-  sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
+  sidekey_runtime sidekey_scan sidekey_input sidekey_cgroup LIBEVDEV_DEP)
 add_test(NAME daemon_config COMMAND test_daemon_config)
 
 add_executable(test_daemon_lifecycle tests/test_daemon_lifecycle.c)
 target_link_libraries(test_daemon_lifecycle PRIVATE
   sidekey_args sidekey_config sidekey_fsm sidekey_log sidekey_output sidekey_notify
-  sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
+  sidekey_runtime sidekey_scan sidekey_input sidekey_cgroup LIBEVDEV_DEP)
 add_test(NAME daemon_lifecycle COMMAND test_daemon_lifecycle)
 
 add_executable(test_output_capture tests/test_output_capture.c)
 target_link_libraries(test_output_capture PRIVATE
   sidekey_args sidekey_config sidekey_fsm sidekey_log sidekey_output sidekey_notify
-  sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
+  sidekey_runtime sidekey_scan sidekey_input sidekey_cgroup LIBEVDEV_DEP)
 add_test(NAME output_capture COMMAND test_output_capture)
 
 add_executable(test_notify_dispatch tests/test_notify_dispatch.c)
 target_link_libraries(test_notify_dispatch PRIVATE
   sidekey_args sidekey_config sidekey_fsm sidekey_log sidekey_output sidekey_notify
-  sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
+  sidekey_runtime sidekey_scan sidekey_input sidekey_cgroup LIBEVDEV_DEP)
 add_test(NAME notify_dispatch COMMAND test_notify_dispatch)
 
 add_executable(test_reload tests/test_reload.c)
 target_include_directories(test_reload PRIVATE ../third_party/uthash)
 target_link_libraries(test_reload PRIVATE
-  sidekey_args sidekey_output sidekey_notify sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
+  sidekey_args sidekey_output sidekey_notify sidekey_runtime sidekey_scan sidekey_input sidekey_cgroup LIBEVDEV_DEP)
 add_test(NAME reload COMMAND test_reload)
+
+add_executable(test_cgroup tests/test_cgroup.c)
+target_link_libraries(test_cgroup PRIVATE sidekey_cgroup)
+add_test(NAME cgroup COMMAND test_cgroup)
 
 # 守护进程可执行文件：仅在 NDK 交叉编译时生成（主机只跑单元测试）。
 if(ANDROID)
   add_executable(oplus-sidekey src/main.c)
   target_link_libraries(oplus-sidekey PRIVATE
-    sidekey_args sidekey_config sidekey_fsm sidekey_log sidekey_output sidekey_notify
-    sidekey_runtime sidekey_scan sidekey_input LIBEVDEV_DEP)
+    sidekey_cgroup sidekey_args sidekey_config sidekey_fsm sidekey_log sidekey_output sidekey_notify
+    sidekey_runtime sidekey_scan sidekey_input sidekey_cgroup LIBEVDEV_DEP)
 endif()
+
+# 单元测试不得把测试进程移出宿主机 cgroup。
+get_property(_sidekey_tests DIRECTORY PROPERTY TESTS)
+set_tests_properties(${_sidekey_tests} PROPERTIES ENVIRONMENT "SIDEKEY_NO_CGROUP_ESCAPE=1")

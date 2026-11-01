@@ -15,6 +15,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <linux/input.h>
+#include "sidekey_cgroup.h"
 #include "sidekey_args.h"
 #include "sidekey_config.h"
 #include "sidekey_fsm.h"
@@ -624,6 +625,23 @@ static int wait_for_input(int timeout_ms) {
     return 0;
 }
 
+/* 离开启动者（如 KernelSU 管理器）的 cgroup，避免随应用一起被 ColorOS 冻结。 */
+static void escape_app_cgroup(void) {
+    if (getenv("SIDEKEY_NO_CGROUP_ESCAPE")) return;
+    int moved = sidekey_cgroup_escape(SIDEKEY_CGROUP_ROOTS, SIDEKEY_CGROUP_ROOTS_COUNT, (long)getpid());
+    char cg[256] = "";
+    int fd = open("/proc/self/cgroup", O_RDONLY | O_CLOEXEC);
+    if (fd >= 0) {
+        ssize_t r = read(fd, cg, sizeof(cg) - 1);
+        cg[r > 0 ? r : 0] = 0;
+        close(fd);
+        for (char *p = cg; *p; p++) if (*p == '\n') *p = ' ';
+    }
+    char msg[384];
+    snprintf(msg, sizeof(msg), "cgroup escape moved=%d now=%s", moved, cg);
+    log_msg(moved > 0 ? "INFO" : "WARN", msg);
+}
+
 static int setup_paths(const char *moddir) {
     int n1 = snprintf(g_moddir, sizeof(g_moddir), "%s", moddir);
     int n2 = snprintf(g_log_path, sizeof(g_log_path), "%s/log.txt", moddir);
@@ -693,6 +711,7 @@ int main(int argc, char **argv) {
     signal(SIGPIPE, SIG_IGN);
 
     log_msg("INFO", "daemon starting");
+    escape_app_cgroup();
 
     if (acquire_instance_lock() != 0) {
         log_msg("WARN", "cannot acquire instance lock; another instance may be running");

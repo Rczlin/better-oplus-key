@@ -19,6 +19,8 @@ const FAQ: [string, string][] = [
   ["为什么显示“执行失败（2）”？", "通常是命令把输出写进了 /data/adb 下的文件：input、am、cmd 等命令会把输出交给系统服务，系统无权访问该目录，于是报 Failed transaction。去掉重定向即可，服务会自动收集命令输出。"],
   ["内置动作安全吗？", "内置动作只调用系统自带命令（模拟按键、打开相机、切换开关等）。所有命令都以 root 权限运行，自己填写或从网上复制的命令请确认来源可信。"],
   ["侧键原来的功能去哪了？", "服务运行时会接管侧键；停止服务后，侧键恢复系统原有功能。"],
+  ["开机会自动启动吗？", "会。开机后服务自动启动；如果意外退出，会在几秒内自动重新拉起。只有你在本页点“停止服务”后才会保持停止，直到再次启动或重启手机。"],
+  ["按键要打开 Root 管理器才生效？", "这是旧版本的问题：从管理器里启动的服务会被 ColorOS 随管理器一起冻结，按键积压到打开管理器时一次性执行。0.5.6 起服务会脱离管理器独立运行，积压超过 5 秒的按键也会直接丢弃，不会突然连续执行。"],
 ];
 
 interface Props {
@@ -110,7 +112,7 @@ export const OverviewView = memo(function OverviewView({ running, bindingCount, 
       <div className="relative flex flex-wrap items-start justify-between gap-5">
         <div className="flex min-w-0 items-start gap-4"><span className="rounded-2xl border border-primary/20 bg-primary/10 p-3.5 text-primary"><Zap className="size-7" /></span><div className="min-w-0">
           <p className="mb-2 text-sm text-muted-foreground">侧键服务</p><h2 className="flex items-center gap-2.5 text-xl font-semibold"><span className={`size-2 rounded-full ${running ? "bg-emerald-400 shadow-[0_0_12px_#34d39966]" : running === null ? "bg-amber-300" : "bg-slate-500"}`} />{running === null ? "状态未知" : running ? "运行中" : "已停止"}</h2>
-          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{running ? "服务正在监听侧键，按已保存的组合执行操作。" : running === false ? "启动服务，让已保存的快捷操作随时待命。" : "查询服务状态后，即可启动或停止侧键服务。"}</p>
+          <p className="mt-3 max-w-md text-sm leading-6 text-muted-foreground">{running ? "服务正在监听侧键，按已保存的组合执行操作。开机自动启动，意外退出会自动恢复。" : running === false ? "启动服务，让已保存的快捷操作随时待命。" : "查询服务状态后，即可启动或停止侧键服务。"}</p>
           {autoRefresh && running && <p className="mt-1 text-[11px] text-muted-foreground">详情每 5 秒自动刷新（页面在后台时暂停）</p>}
         </div></div>
         <div className="flex flex-wrap gap-2 self-center">

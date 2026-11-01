@@ -16,6 +16,8 @@ export function stopCmd(moddir: string): string {
   const exe = `${moddir}/bin/oplus-sidekey`;
   const pid = `${moddir}/daemon.pid`;
   return [
+    // 先写停止标记，看护进程看到后不再拉起守护进程。
+    `touch ${moddir}/stop.request 2>/dev/null`,
     `P=$(cat ${pid} 2>/dev/null)`,
     `if [ -z "$P" ] || [ "$(readlink /proc/$P/exe 2>/dev/null)" != "${exe}" ]; then echo not-running; exit 0; fi`,
     `kill -TERM "$P" && sleep 1 && [ "$(readlink /proc/$P/exe 2>/dev/null)" != "${exe}" ] && echo stopped || echo failed`,

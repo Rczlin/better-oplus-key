@@ -65,6 +65,21 @@ static void delayed_long_press(void) {
     sidekey_fsm_destroy(&f);
 }
 
+/* Break: a frozen daemon replays every queued press the instant it thaws. */
+static void stale_events_dropped(void) {
+    fixture_t r = {.now = 60000}; sidekey_fsm_t f = {0}; sidekey_input_t input = {0}; int timeout;
+    init(&f, &r);
+    key(&r, 1, 1000); key(&r, 0, 1100);      /* 一分钟前的单击 */
+    key(&r, 1, 2000); key(&r, 0, 2600);      /* 一分钟前的长按 */
+    key(&r, 1, 59800); key(&r, 0, 59850);    /* 刚刚的单击 */
+    CHECK(drain(&input, &f, &r, &timeout) == 0);
+    r.now = 70000;
+    CHECK(drain(&input, &f, &r, &timeout) == 0);
+    CHECK(r.nseq == 1); CHECK(strcmp(r.seqs[0], "0") == 0);
+    CHECK(r.nlog == 2);
+    sidekey_fsm_destroy(&f);
+}
+
 /* Break: ticking current time before queued edges prematurely splits 1299. */
 static void queued_window_boundaries(void) {
     const struct { long long down; int count; const char *first; } cases[] = {
@@ -162,6 +177,7 @@ static void interrupted_drain_defers_idle_tick(void) {
 }
 
 int main(void) {
+    stale_events_dropped();
     delayed_long_press(); queued_window_boundaries(); long_press_boundaries();
     third_release_is_complete_once(); drains_more_than_32_events();
     filters_duplicates_repeats_and_unrelated(); discards_clock_switch_queue();

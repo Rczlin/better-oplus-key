@@ -2,6 +2,13 @@
 MODDIR=${0%/*}
 DAEMON="$MODDIR/bin/oplus-sidekey"
 
+# 0) 先阻止看护进程重新拉起守护进程，再结束看护进程。
+: > "$MODDIR/stop.request" 2>/dev/null
+if [ -f "$MODDIR/supervisor.pid" ]; then
+  SP=$(cat "$MODDIR/supervisor.pid" 2>/dev/null)
+  [ -n "$SP" ] && grep -q supervise.sh "/proc/$SP/cmdline" 2>/dev/null && kill -TERM "$SP" 2>/dev/null
+fi
+
 # 1) 优先按 pid 文件结束，但只结束确认是本守护进程的 pid。
 if [ -f "$MODDIR/daemon.pid" ]; then
   PID=$(cat "$MODDIR/daemon.pid" 2>/dev/null)

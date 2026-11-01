@@ -33,6 +33,10 @@ int sidekey_input_drain(sidekey_input_t *input, sidekey_fsm_t *fsm, int keycode,
         if (pressed == input->prev_pressed) continue;
         input->prev_pressed = pressed;
         long long t_ms = (long long)event.time.tv_sec * 1000LL + event.time.tv_usec / 1000;
+        if (io->now_ms(io->ctx) - t_ms > SIDEKEY_INPUT_STALE_MS) {
+            sidekey_fsm_reset(fsm);  /* 过期边沿连同未完成的组合一起作废 */
+            continue;
+        }
         sidekey_fsm_tick(fsm, t_ms);
         if (io->log_event) io->log_event(io->ctx, pressed, keycode, t_ms);
         sidekey_fsm_key(fsm, pressed, t_ms);
