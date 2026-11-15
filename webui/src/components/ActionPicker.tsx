@@ -61,30 +61,30 @@ export function ActionPicker({ initialCommand, initialPresetId, command, disable
     catch { setPackagesState("error"); }
   };
 
-  return <fieldset className="grid min-w-0 gap-3 rounded-xl border p-3" disabled={disabled}>
-    <legend className="px-1 text-sm font-medium">选择动作 <span className="font-normal text-muted-foreground">（推荐，无需会写命令）</span></legend>
-    <div className="relative min-w-0"><Search className="absolute top-2.5 left-3 size-4 text-muted-foreground" /><Input aria-label="搜索动作" placeholder="搜索：截屏、音乐、微信…" value={query} onChange={e => setQuery(e.target.value)} className="h-9 pl-9" /></div>
-    <div role="group" aria-label="动作类别" className="flex flex-wrap gap-1.5">
+  return <fieldset className="grid min-w-0 gap-3 rounded-2xl bg-card p-3" disabled={disabled}>
+    <legend className="sr-only">选择动作（推荐，无需会写命令）</legend>
+    <div className="relative min-w-0"><Search className="pointer-events-none absolute top-1/2 left-3 size-[18px] -translate-y-1/2 text-muted-foreground" /><Input aria-label="搜索动作" placeholder="搜索：截屏、音乐、微信…" value={query} onChange={e => setQuery(e.target.value)} className="h-10 rounded-[11px] pl-10" /></div>
+    <div role="group" aria-label="动作类别" className="-mx-3 flex gap-1.5 overflow-x-auto px-3 pb-0.5 [scrollbar-width:none]">
       {[{ id: "all" as const, name: "全部" }, ...PRESET_CATEGORIES].map(c => <button key={c.id} type="button" aria-pressed={category === c.id} onClick={() => setCategory(c.id)}
-        className={cn("rounded-full border px-3 py-1 text-xs outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring", category === c.id ? "border-primary/50 bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground")}>{c.name}</button>)}
+        className={cn("h-8 shrink-0 rounded-full px-3.5 text-[13px] font-medium outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring", category === c.id ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground")}>{c.name}</button>)}
     </div>
-    <div data-testid="action-list" className="grid max-h-56 min-w-0 grid-cols-1 gap-1.5 overflow-y-auto pr-1 sm:grid-cols-2">
+    <div data-testid="action-list" className="grid max-h-64 min-w-0 grid-cols-1 gap-2 overflow-y-auto overscroll-contain sm:grid-cols-2">
       {visible.map(p => <button key={p.id} type="button" aria-pressed={isActive(p)} title={p.description} onClick={() => pick(p)}
-        className={cn("flex min-w-0 items-start gap-2 rounded-lg border px-3 py-2 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50", isActive(p) ? "border-primary/60 bg-primary/10" : "hover:bg-accent")}>
-        <span className="min-w-0 flex-1"><span className="block text-sm font-medium">{p.name}</span><span className="block text-xs leading-5 text-muted-foreground [overflow-wrap:anywhere]">{p.description}</span></span>
-        {isActive(p) && <Check aria-hidden className="mt-0.5 size-4 shrink-0 text-primary" />}
+        className={cn("flex min-w-0 items-start gap-2 rounded-xl px-3 py-2.5 text-left outline-none transition-colors focus-visible:ring-3 focus-visible:ring-ring disabled:opacity-50", isActive(p) ? "bg-primary/12 ring-2 ring-primary ring-inset" : "pressable bg-muted")}>
+        <span className="min-w-0 flex-1"><span className="block text-[15px] font-medium">{p.name}</span><span className="block text-[12px] leading-[1.4] text-muted-foreground [overflow-wrap:anywhere]">{p.description}</span></span>
+        {isActive(p) && <Check aria-hidden className="mt-0.5 size-[18px] shrink-0 text-primary" strokeWidth={2.6} />}
       </button>)}
       {!visible.length && <p className="col-span-full py-4 text-center text-xs text-muted-foreground">没有匹配的动作，可直接在下方填写命令。</p>}
     </div>
     {selected && isActive(selected) && selected.params?.map(param => <div key={param.key} className="grid min-w-0 gap-1.5">
-      <Label htmlFor={`param-${param.key}`}>{param.label}</Label>
+      <Label htmlFor={`param-${param.key}`} className="px-1 text-[13px] text-muted-foreground">{param.label}</Label>
       <div className="flex min-w-0 flex-wrap gap-2">
         <Input id={`param-${param.key}`} value={values[param.key] ?? ""} placeholder={param.placeholder} list={param.kind === "package" ? listId : undefined} inputMode={param.kind === "phone" ? "tel" : undefined}
-          autoCapitalize="off" autoCorrect="off" spellCheck={false} onChange={e => changeParam(param.key, e.target.value)} className="h-9 min-w-48 flex-1 basis-48 font-mono" />
-        {param.kind === "package" && onListPackages && <Button type="button" variant="outline" disabled={packagesState === "loading"} onClick={() => void loadPackages()}><Download />{packagesState === "loading" ? "读取中…" : "读取已安装应用"}</Button>}
+          autoCapitalize="off" autoCorrect="off" spellCheck={false} onChange={e => changeParam(param.key, e.target.value)} className="min-w-48 flex-1 basis-48 font-mono text-[14px]" />
+        {param.kind === "package" && onListPackages && <Button type="button" variant="outline" className="h-11" disabled={packagesState === "loading"} onClick={() => void loadPackages()}><Download />{packagesState === "loading" ? "读取中…" : "读取已安装应用"}</Button>}
       </div>
       {param.kind === "package" && <datalist id={listId}>{packages.map(p => <option key={p} value={p} />)}</datalist>}
-      <p className="text-xs leading-5 text-muted-foreground">{param.help}{packagesState === "ready" && param.kind === "package" ? `（已读取 ${packages.length} 个应用，输入关键字即可筛选）` : ""}</p>
+      <p className="px-1 text-[12px] leading-5 text-muted-foreground">{param.help}{packagesState === "ready" && param.kind === "package" ? `（已读取 ${packages.length} 个应用，输入关键字即可筛选）` : ""}</p>
       {packagesState === "error" && param.kind === "package" && <p className="text-xs text-destructive">读取应用列表失败，可手动填写包名。</p>}
     </div>)}
     {paramError && <p aria-live="polite" className="text-xs text-destructive">{paramError}</p>}

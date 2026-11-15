@@ -11,17 +11,17 @@ export const LogRows = memo(function LogRows({ rows, logsRead, onOpen, templates
       const { resultLabel, summary } = formatExplainRow(row);
       const success = row.result === "0", failure = row.level === "ERROR" || (!!row.result && !success && row.result !== "dropped");
       const Icon = success ? Check : failure ? CircleAlert : CircleDashed;
-      return <article key={i} className="min-w-0 max-w-full rounded-xl border bg-card p-4">
+      return <article key={i} className="min-w-0 max-w-full rounded-[20px] bg-card p-4">
         <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs">
-          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-1 ${success ? "bg-emerald-400/10 text-emerald-300" : failure ? "bg-red-400/10 text-red-300" : "bg-amber-400/10 text-amber-200"}`}><Icon className="size-3" />{resultLabel}</span>
+          <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 font-medium ${success ? "bg-success/12 text-success" : failure ? "bg-destructive/12 text-destructive" : "bg-ios-orange/12 text-warning"}`}><Icon className="size-3" />{resultLabel}</span>
           <time className="text-muted-foreground">{row.time}</time>
-          {row.action && row.action !== "none" && <span data-testid="log-action-name" className="rounded-full bg-primary/10 px-2 py-1 text-primary [overflow-wrap:anywhere]">{describeCommand(row.action, templates).name}</span>}
+          {row.action && row.action !== "none" && <span data-testid="log-action-name" className="rounded-full bg-primary/12 px-2 py-0.5 font-medium text-primary [overflow-wrap:anywhere]">{describeCommand(row.action, templates).name}</span>}
           {row.result === "dropped" && <span className="text-muted-foreground">这个按法没有绑定动作</span>}
         </div>
         {summary.length > 140 ? <details className="my-3 min-w-0 text-sm leading-6"><summary className="cursor-pointer rounded [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-ring">{summary.slice(0, 140)}… <span className="text-xs text-primary">展开完整记录</span></summary><p className="mt-2 max-h-48 min-w-0 overflow-auto [overflow-wrap:anywhere]">{summary}</p></details> : <p className="my-3 min-w-0 text-sm leading-6 [overflow-wrap:anywhere]">{summary}</p>}
         {row.action && row.action !== "none" && <CommandPreview command={row.action} />}
         {onOpen && <button type="button" className="mt-2 text-xs text-primary" onClick={() => onOpen(row)}>查看详情</button>}
       </article>;
-    }) : <div className="rounded-xl border border-dashed p-10 text-center text-sm text-muted-foreground">{logsRead ? "暂无可用记录" : "点击刷新读取"}</div>}
+    }) : <div className="rounded-[22px] bg-card p-10 text-center text-sm text-muted-foreground">{logsRead ? "暂无可用记录" : "点击刷新读取"}</div>}
   </div>;
 });

@@ -2,28 +2,22 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
-@custom-variant dark (&:is(.dark *));
+/* 跟随系统深浅色：KernelSU/SukiSU 的 WebView 会传递系统的 prefers-color-scheme。 */
+@custom-variant dark (@media (prefers-color-scheme: dark));
 
 @theme inline {
     --font-heading: var(--font-sans);
-    --font-sans: system-ui, 'Segoe UI', Roboto, sans-serif;
-    --color-sidebar-ring: var(--sidebar-ring);
-    --color-sidebar-border: var(--sidebar-border);
-    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-    --color-sidebar-accent: var(--sidebar-accent);
-    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-    --color-sidebar-primary: var(--sidebar-primary);
-    --color-sidebar-foreground: var(--sidebar-foreground);
-    --color-sidebar: var(--sidebar);
-    --color-chart-5: var(--chart-5);
-    --color-chart-4: var(--chart-4);
-    --color-chart-3: var(--chart-3);
-    --color-chart-2: var(--chart-2);
-    --color-chart-1: var(--chart-1);
+    --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "MiSans", "HarmonyOS Sans SC", "OPlusSans 3.0", "Noto Sans SC", system-ui, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, Consolas, "Roboto Mono", monospace;
     --color-ring: var(--ring);
     --color-input: var(--input);
     --color-border: var(--border);
     --color-destructive: var(--destructive);
+    --color-success: var(--success);
+    --color-warning: var(--warning);
+    --color-code: var(--code);
+    --color-material: var(--material);
+    --color-tertiary-foreground: var(--tertiary-foreground);
     --color-accent-foreground: var(--accent-foreground);
     --color-accent: var(--accent);
     --color-muted-foreground: var(--muted-foreground);
@@ -38,168 +32,282 @@
     --color-card: var(--card);
     --color-foreground: var(--foreground);
     --color-background: var(--background);
-    --radius-sm: calc(var(--radius) * 0.6);
-    --radius-md: calc(var(--radius) * 0.8);
+    /* iOS 系统色：设置页图标方块 */
+    --color-ios-blue: var(--ios-blue);
+    --color-ios-green: var(--ios-green);
+    --color-ios-orange: var(--ios-orange);
+    --color-ios-red: var(--ios-red);
+    --color-ios-purple: var(--ios-purple);
+    --color-ios-indigo: var(--ios-indigo);
+    --color-ios-teal: var(--ios-teal);
+    --color-ios-pink: var(--ios-pink);
+    --color-ios-gray: var(--ios-gray);
+    --radius-sm: calc(var(--radius) * 0.5);
+    --radius-md: calc(var(--radius) * 0.75);
     --radius-lg: var(--radius);
-    --radius-xl: calc(var(--radius) * 1.4);
-    --radius-2xl: calc(var(--radius) * 1.8);
+    --radius-xl: calc(var(--radius) * 1.25);
+    --radius-2xl: calc(var(--radius) * 1.6);
     --radius-3xl: calc(var(--radius) * 2.2);
     --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-:root, .dark {
-    color-scheme: dark;
-    --background: #0c111c;
-    --foreground: #e8edf7;
-    --card: #141c2b;
-    --card-foreground: #e8edf7;
-    --popover: #1a2436;
-    --popover-foreground: #e8edf7;
-    --primary: #a6abff;
-    --primary-foreground: #141733;
-    --secondary: #222d43;
-    --secondary-foreground: #e8edf7;
-    --muted: #1a2436;
-    --muted-foreground: #a1aec4;
-    --accent: #222d43;
-    --accent-foreground: #e8edf7;
-    --destructive: #fda4af;
-    --border: #29354b;
-    --input: #35435d;
-    --ring: #a6abff;
-    --chart-1: #a6abff;
-    --chart-2: #6ee7b7;
-    --chart-3: #fcd34d;
-    --chart-4: #fda4af;
-    --chart-5: #7dd3fc;
+/* 浅色：iOS systemGroupedBackground 体系 */
+:root {
+    color-scheme: light dark;
+    --background: #f2f2f7;
+    --foreground: #000000;
+    --card: #ffffff;
+    --card-foreground: #000000;
+    --popover: #ffffff;
+    --popover-foreground: #000000;
+    --material: rgb(249 249 251 / 0.78);
+    --primary: #007aff;
+    --primary-foreground: #ffffff;
+    --secondary: rgb(118 118 128 / 0.12);
+    --secondary-foreground: #000000;
+    --muted: rgb(118 118 128 / 0.08);
+    --muted-foreground: rgb(60 60 67 / 0.6);
+    --tertiary-foreground: rgb(60 60 67 / 0.3);
+    --accent: rgb(118 118 128 / 0.12);
+    --accent-foreground: #000000;
+    --destructive: #ff3b30;
+    --success: #248a3d;
+    --warning: #c93400;
+    --code: rgb(118 118 128 / 0.08);
+    --border: rgb(60 60 67 / 0.18);
+    --input: rgb(118 118 128 / 0.12);
+    --ring: rgb(0 122 255 / 0.45);
     --radius: 0.75rem;
-    --sidebar: #101724;
-    --sidebar-foreground: #e8edf7;
-    --sidebar-primary: #a6abff;
-    --sidebar-primary-foreground: #141733;
-    --sidebar-accent: #222d43;
-    --sidebar-accent-foreground: #e8edf7;
-    --sidebar-border: #29354b;
-    --sidebar-ring: #a6abff;
+    --ios-blue: #007aff;
+    --ios-green: #34c759;
+    --ios-orange: #ff9500;
+    --ios-red: #ff3b30;
+    --ios-purple: #af52de;
+    --ios-indigo: #5856d6;
+    --ios-teal: #30b0c7;
+    --ios-pink: #ff2d55;
+    --ios-gray: #8e8e93;
+}
+
+/* 深色：纯黑背景 + 抬升的分组卡片 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #000000;
+    --foreground: #ffffff;
+    --card: #1c1c1e;
+    --card-foreground: #ffffff;
+    --popover: #2c2c2e;
+    --popover-foreground: #ffffff;
+    --material: rgb(29 29 31 / 0.74);
+    --primary: #0a84ff;
+    --primary-foreground: #ffffff;
+    --secondary: rgb(118 118 128 / 0.24);
+    --secondary-foreground: #ffffff;
+    --muted: rgb(118 118 128 / 0.16);
+    --muted-foreground: rgb(235 235 245 / 0.6);
+    --tertiary-foreground: rgb(235 235 245 / 0.3);
+    --accent: rgb(118 118 128 / 0.24);
+    --accent-foreground: #ffffff;
+    --destructive: #ff453a;
+    --success: #30d158;
+    --warning: #ffb340;
+    --code: rgb(255 255 255 / 0.05);
+    --border: rgb(84 84 88 / 0.55);
+    --input: rgb(118 118 128 / 0.24);
+    --ring: rgb(10 132 255 / 0.55);
+    --ios-blue: #0a84ff;
+    --ios-green: #30d158;
+    --ios-orange: #ff9f0a;
+    --ios-red: #ff453a;
+    --ios-purple: #bf5af2;
+    --ios-indigo: #5e5ce6;
+    --ios-teal: #40c8e0;
+    --ios-pink: #ff375f;
+    --ios-gray: #8e8e93;
+  }
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    }
+  }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground antialiased;
     margin: 0;
     min-width: 0;
-    background-image: radial-gradient(ellipse at 90% 0, #1d285333, transparent 55%);
-    background-attachment: fixed;
-    }
+    font-size: 15px;
+    letter-spacing: -0.01em;
+    font-feature-settings: "kern";
+  }
   html {
     @apply font-sans;
-    scrollbar-gutter: stable;
     -webkit-tap-highlight-color: transparent;
     -webkit-text-size-adjust: 100%;
     overscroll-behavior-y: none;
-    }
+  }
   summary::-webkit-details-marker { display: none; }
-  ::selection { background: color-mix(in oklch, var(--primary) 35%, transparent); }
+  summary { list-style: none; }
+  ::selection { background: color-mix(in oklab, var(--primary) 30%, transparent); }
+  button, a, summary, label { -webkit-user-select: none; user-select: none; }
 }
 
-.service-panel {
-  background: radial-gradient(ellipse at 100% 0, #575bc425, transparent 65%), linear-gradient(135deg, #1a2337, #141c2b);
+/* 毛玻璃材质：导航栏、标签栏、保存条、提示 */
+.material {
+  background: var(--material);
+  -webkit-backdrop-filter: saturate(180%) blur(24px);
+  backdrop-filter: saturate(180%) blur(24px);
 }
 
-/* 滑块：粗轨道 + 已选部分高亮 + 大拇指，手指更好拖。--fill 由组件按当前值给出。 */
+/* 分组列表：行与行之间是从文字处开始的细分隔线（iOS inset separator）。 */
+.ios-list > * + * { position: relative; }
+.ios-list > * + *::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: var(--separator-inset, 1rem);
+  height: 1px;
+  background: var(--border);
+  transform: scaleY(0.5);
+  transform-origin: top;
+  pointer-events: none;
+}
+.ios-list.with-icons { --separator-inset: 3.75rem; }
+
+/* 分段控件 */
+.segmented {
+  display: flex;
+  min-width: 0;
+  max-width: 100%;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 0.6rem;
+  background: var(--secondary);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.segmented::-webkit-scrollbar { display: none; }
+.segmented-item {
+  position: relative;
+  display: inline-flex;
+  flex: 1 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 2rem;
+  padding: 0.25rem 0.75rem;
+  border-radius: 0.5rem;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--foreground);
+  white-space: nowrap;
+  cursor: pointer;
+  outline: none;
+  transition: background-color 0.2s, box-shadow 0.2s, color 0.2s;
+}
+.segmented-item:focus-visible, .segmented-item:has(:focus-visible) { box-shadow: 0 0 0 3px var(--ring); }
+.segmented-item[data-state="active"],
+.segmented-item[aria-pressed="true"],
+.segmented-item:has(input:checked) {
+  background: var(--card);
+  font-weight: 600;
+  box-shadow: 0 3px 8px rgb(0 0 0 / 0.12), 0 3px 1px rgb(0 0 0 / 0.04);
+}
+@media (prefers-color-scheme: dark) {
+  .segmented-item[data-state="active"],
+  .segmented-item[aria-pressed="true"],
+  .segmented-item:has(input:checked) { background: #636366; }
+}
+.segmented-item:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
+
+/* iOS 开关：保留原生 checkbox 语义，仅改外观。 */
+.ios-switch {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 51px;
+  height: 31px;
+  margin: 0;
+  border-radius: 999px;
+  background: var(--input);
+  cursor: pointer;
+  outline: none;
+  transition: background-color 0.25s;
+}
+.ios-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 27px;
+  height: 27px;
+  border-radius: 999px;
+  background: #fff;
+  box-shadow: 0 3px 8px rgb(0 0 0 / 0.15), 0 3px 1px rgb(0 0 0 / 0.06);
+  transition: transform 0.25s cubic-bezier(0.3, 0.7, 0.4, 1.2);
+}
+.ios-switch:checked { background: var(--ios-green); }
+.ios-switch:checked::after { transform: translateX(20px); }
+.ios-switch:focus-visible { box-shadow: 0 0 0 3px var(--ring); }
+.ios-switch:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* 滑块：iOS 细轨道 + 白色圆形拇指。--fill 由组件按当前值给出。 */
 .range-input {
   -webkit-appearance: none;
   appearance: none;
   width: 100%;
-  height: 1.75rem;
+  height: 2rem;
   background: transparent;
   cursor: pointer;
   touch-action: pan-y;
 }
-.range-input:disabled { cursor: not-allowed; opacity: 0.5; }
+.range-input:disabled { cursor: not-allowed; opacity: 0.45; }
 .range-input::-webkit-slider-runnable-track {
-  height: 0.375rem;
+  height: 4px;
   border-radius: 999px;
   background: linear-gradient(to right, var(--primary) var(--fill, 50%), var(--input) var(--fill, 50%));
 }
-.range-input::-moz-range-track { height: 0.375rem; border-radius: 999px; background: var(--input); }
-.range-input::-moz-range-progress { height: 0.375rem; border-radius: 999px; background: var(--primary); }
+.range-input::-moz-range-track { height: 4px; border-radius: 999px; background: var(--input); }
+.range-input::-moz-range-progress { height: 4px; border-radius: 999px; background: var(--primary); }
 .range-input::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  margin-top: -0.5rem;
-  width: 1.375rem;
-  height: 1.375rem;
+  margin-top: -12px;
+  width: 28px;
+  height: 28px;
   border-radius: 999px;
-  background: var(--foreground);
-  border: 4px solid var(--primary);
-  box-shadow: 0 2px 8px #0008;
+  background: #fff;
+  border: 0;
+  box-shadow: 0 0.5px 4px rgb(0 0 0 / 0.12), 0 6px 13px rgb(0 0 0 / 0.12);
   transition: transform 0.15s;
 }
-.range-input:active::-webkit-slider-thumb { transform: scale(1.15); }
-.range-input::-moz-range-thumb { width: 1rem; height: 1rem; border-radius: 999px; background: var(--foreground); border: 4px solid var(--primary); }
+.range-input:active::-webkit-slider-thumb { transform: scale(1.08); }
+.range-input::-moz-range-thumb { width: 28px; height: 28px; border-radius: 999px; background: #fff; border: 0; box-shadow: 0 0.5px 4px rgb(0 0 0 / 0.12), 0 6px 13px rgb(0 0 0 / 0.12); }
 .range-input:focus-visible { outline: none; }
-.range-input:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px color-mix(in oklch, var(--ring) 45%, transparent); }
+.range-input:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px var(--ring); }
 
-/* 手机上的底部弹层顶部加一条拖动提示条 */
+/* 底部弹层顶部的拖动提示条 */
 .sheet-content::before {
   content: "";
   position: absolute;
-  top: 0.5rem;
+  z-index: 20;
+  top: 0.375rem;
   left: 50%;
-  width: 2.5rem;
-  height: 0.25rem;
+  width: 2.25rem;
+  height: 0.3125rem;
   border-radius: 999px;
-  background: var(--input);
+  background: var(--tertiary-foreground);
   transform: translateX(-50%);
 }
 @media (min-width: 640px) { .sheet-content::before { display: none; } }
 
-.app-navigation {
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.5rem);
-}
+.app-navigation { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 0.25rem); }
+@media (min-width: 768px) { .app-navigation { padding-bottom: 0; } }
 
-@media (min-width: 768px) {
-  /* 滑块：粗轨道 + 已选部分高亮 + 大拇指，手指更好拖。--fill 由组件按当前值给出。 */
-.range-input {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  height: 1.75rem;
-  background: transparent;
-  cursor: pointer;
-  touch-action: pan-y;
-}
-.range-input:disabled { cursor: not-allowed; opacity: 0.5; }
-.range-input::-webkit-slider-runnable-track {
-  height: 0.375rem;
-  border-radius: 999px;
-  background: linear-gradient(to right, var(--primary) var(--fill, 50%), var(--input) var(--fill, 50%));
-}
-.range-input::-moz-range-track { height: 0.375rem; border-radius: 999px; background: var(--input); }
-.range-input::-moz-range-progress { height: 0.375rem; border-radius: 999px; background: var(--primary); }
-.range-input::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  margin-top: -0.5rem;
-  width: 1.375rem;
-  height: 1.375rem;
-  border-radius: 999px;
-  background: var(--foreground);
-  border: 4px solid var(--primary);
-  box-shadow: 0 2px 8px #0008;
-  transition: transform 0.15s;
-}
-.range-input:active::-webkit-slider-thumb { transform: scale(1.15); }
-.range-input::-moz-range-thumb { width: 1rem; height: 1rem; border-radius: 999px; background: var(--foreground); border: 4px solid var(--primary); }
-.range-input:focus-visible { outline: none; }
-.range-input:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 4px color-mix(in oklch, var(--ring) 45%, transparent); }
-
-.app-navigation { padding-bottom: 0; }
-}
+/* 按压反馈：iOS 风格的高亮而非涟漪 */
+.pressable { transition: background-color 0.15s; }
+.pressable:active:not(:disabled) { background-color: var(--accent); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
