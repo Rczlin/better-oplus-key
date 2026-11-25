@@ -8,3 +8,8 @@
   - 真机未验证 `cmd media_session dispatch` 在 ColorOS 17 的输出；若系统对成功也打印含 “Error” 的文字，会多发一次 keyevent（症状：一次按下切两首）。需真机确认。
   - dumpsys 若把已失效会话保留为 PLAYING，toggle 会发 pause（无害，再按一次即可）。
   - 模块路径固定为 /data/adb/modules/oplus-sidekey（与 WebUI 现有 MODDIR 一致）。
+
+## 0.5.9 补充（2026-11-26）
+- 真机反馈：完全没有播放时按键会拉起音乐应用。原因：无会话时 `cmd media_session dispatch` 被转给最近的媒体按钮接收者。
+- 反编译 ColorOS 17 SystemUI（MediaActionsKt.createActionsFromState / getStandardAction）：卡片按会话 PlaybackState 选播放或暂停按钮，直接调用该会话 TransportControls.play/pause/skipToNext/skipToPrevious；无会话不显示卡片。恢复卡片（ResumeMediaBrowser）需用户点击才连接 MediaBrowserService 播放。
+- 修复：media.sh 先读 dumpsys，只有存在非 NONE/STOPPED/ERROR 的会话才下发；否则输出 `media=none via=none`。`SIDEKEY_MEDIA_LAUNCH=1` 恢复旧行为。测试 12 项通过。

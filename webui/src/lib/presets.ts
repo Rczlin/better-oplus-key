@@ -112,7 +112,7 @@ export const PRESETS: Preset[] = [
   { id: "assistant", name: "语音助手", description: "唤起系统默认助手", category: "system", command: key(219) },
   // 媒体与音量
   // 媒体：与控制中心媒体卡片相同，直接控制正在/最近播放的应用，不受前台应用影响。
-  { id: "media-play-pause", name: "播放 / 暂停", description: "像控制中心一样：正在播放就暂停，否则继续播放", category: "media", ...media("toggle", 85) },
+  { id: "media-play-pause", name: "播放 / 暂停", description: "像控制中心一样：正在播放就暂停，暂停中就继续；没有播放器时不做任何事", category: "media", ...media("toggle", 85) },
   { id: "media-next", name: "下一首", description: "控制中心同款，后台播放也能切歌", category: "media", ...media("next", 87) },
   { id: "media-previous", name: "上一首", description: "控制中心同款，后台播放也能切歌", category: "media", ...media("previous", 88) },
   { id: "media-stop", name: "停止播放", description: "停止当前媒体播放", category: "media", ...media("stop", 86) },

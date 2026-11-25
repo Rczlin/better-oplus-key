@@ -79,6 +79,7 @@ class MediaScriptTest(unittest.TestCase):
         (self.stub / "dumpsys.txt").write_text(text)
 
     def test_verbs_dispatch_to_media_session(self):
+        self.dumpsys(NEW_PAUSED)
         cases = {"play": "play", "pause": "pause", "next": "next", "previous": "previous",
                  "stop": "stop", "forward": "fast-forward", "rewind": "rewind"}
         for verb, key in cases.items():
@@ -89,7 +90,6 @@ class MediaScriptTest(unittest.TestCase):
                 self.assertEqual(self.log("cmd"), f"media_session dispatch {key}\n")
                 self.assertIn(f"media={verb} via=session", out)
         self.assertEqual(self.log("input"), "")
-        self.assertEqual(self.log("dumpsys"), "")
 
     def test_toggle_pauses_when_playing_new_format(self):
         self.dumpsys(NEW_PLAYING)
@@ -109,7 +109,7 @@ class MediaScriptTest(unittest.TestCase):
         self.run_media("toggle")
         self.assertEqual(self.log("cmd"), "media_session dispatch pause\n")
         (self.stub / "cmd.log").unlink()
-        self.dumpsys(OLD_STOPPED)
+        self.dumpsys(OLD_PLAYING.replace("state=3,", "state=2,"))
         self.run_media("toggle")
         self.assertEqual(self.log("cmd"), "media_session dispatch play\n")
 
@@ -118,9 +118,21 @@ class MediaScriptTest(unittest.TestCase):
         self.run_media("toggle")
         self.assertEqual(self.log("cmd"), "media_session dispatch pause\n")
 
-    def test_toggle_without_sessions_plays(self):
-        self.dumpsys("MEDIA SESSION SERVICE (dumpsys media_session)\n    Sessions Stack - have 0 sessions:\n")
-        self.run_media("toggle")
+    def test_nothing_controllable_does_nothing(self):
+        empty = "MEDIA SESSION SERVICE (dumpsys media_session)\n    Sessions Stack - have 0 sessions:\n"
+        for text in (empty, OLD_STOPPED, NEW_PLAYING.replace("PLAYING(3)", "STOPPED(1)").replace("PAUSED(2)", "NONE(0)")):
+            for verb in ("toggle", "play", "next", "previous"):
+                with self.subTest(verb=verb, text=text[:20]):
+                    self.dumpsys(text)
+                    rc, out = self.run_media(verb)
+                    self.assertEqual(rc, 0)
+                    self.assertIn("media=none via=none", out)
+        self.assertEqual(self.log("cmd") + self.log("input"), "")
+
+    def test_launch_override_restores_old_behaviour(self):
+        self.dumpsys(OLD_STOPPED)
+        env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", STUB=str(self.stub), SIDEKEY_MEDIA_LAUNCH="1")
+        subprocess.run(["sh", str(self.tmp / "media.sh"), "toggle"], env=env, capture_output=True, text=True, timeout=20)
         self.assertEqual(self.log("cmd"), "media_session dispatch play\n")
 
     def test_toggle_unreadable_state_falls_back_to_play_pause(self):
@@ -129,6 +141,7 @@ class MediaScriptTest(unittest.TestCase):
         self.assertEqual(self.log("cmd"), "media_session dispatch play-pause\n")
 
     def test_cmd_failure_falls_back_to_keyevent(self):
+        self.dumpsys(NEW_PAUSED)
         (self.stub / "cmd_fail").touch()
         cases = {"play": 126, "pause": 127, "next": 87, "previous": 88, "stop": 86, "forward": 90, "rewind": 89}
         for verb, code in cases.items():
