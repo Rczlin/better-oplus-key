@@ -87,7 +87,7 @@ describe("easy mode for non-shell users", () => {
     expect(screen.getByTestId("unsaved-banner")).toBeInTheDocument();
     click("立即保存");
     await waitFor(() => expect(templatePayload).not.toBe(""));
-    expect(configPayload).toContain("0=input keyevent 85\n");
+    expect(configPayload).toContain("0=sh /data/adb/modules/oplus-sidekey/media.sh toggle\n");
     expect(configPayload).toContain("0000=echo four\n");
     // 无参数的内置动作不重复收录，只收录自定义命令。
     expect(JSON.parse(templatePayload).map((t: { command: string }) => t.command)).toEqual(["echo four"]);

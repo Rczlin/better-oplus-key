@@ -8,6 +8,7 @@ set_perm "$MODPATH/bin/oplus-sidekey" 0 0 0755
 set_perm "$MODPATH/service.sh" 0 0 0755
 set_perm "$MODPATH/uninstall.sh" 0 0 0755
 set_perm "$MODPATH/island.sh" 0 0 0755
+set_perm "$MODPATH/media.sh" 0 0 0755
 set_perm "$MODPATH/supervise.sh" 0 0 0755
 
 # 升级安装时 $MODPATH 指向 modules_update 下的新目录，旧配置留在 modules 下。

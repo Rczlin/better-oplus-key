@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { validateCommand } from "../src/lib/config";
 import {
   PRESETS, PACKS, PRESET_CATEGORIES, buildPresetCommand, describeCommand, findPreset, matchPreset,
-  shellQuote, validatePackageName, applyPack, parsePackageList, prefixConflicts,
+  shellQuote, validatePackageName, applyPack, parsePackageList, prefixConflicts, upgradeLegacyCommands, MEDIA_SH,
 } from "../src/lib/presets";
 
 describe("built-in presets", () => {
@@ -46,8 +46,8 @@ describe("built-in presets", () => {
     const { bindings, replaced } = applyPack({ "0": "echo old", "01": "echo keep", "00": buildPresetCommand(findPreset("media-next")!, {}) }, pack);
     expect(replaced).toEqual(["0"]);
     expect(bindings["01"]).toBe("echo keep");
-    expect(bindings["0"]).toBe("input keyevent 85");
-    expect(bindings["000"]).toBe("input keyevent 88");
+    expect(bindings["0"]).toBe(`sh ${MEDIA_SH} toggle`);
+    expect(bindings["000"]).toBe(`sh ${MEDIA_SH} previous`);
   });
   it("parses pm package listings", () => {
     expect(parsePackageList("package:com.b\npackage:com.a\r\nbogus\npackage:com.a\n")).toEqual(["com.a", "com.b"]);
@@ -86,5 +86,29 @@ describe("more parameterised presets", () => {
   it("every category has actions and toggles read state before switching", () => {
     for (const c of PRESET_CATEGORIES) expect(PRESETS.some(p => p.category === c.id)).toBe(true);
     for (const p of PRESETS.filter(p => p.category === "toggle")) expect(p.command).toMatch(/^case "\$\(.+\)" in .+\) .+;; \*\) .+;; esac$/);
+  });
+});
+
+describe("media session control", () => {
+  const legacy: Record<string, [string, string]> = {
+    "media-play-pause": ["input keyevent 85", "toggle"], "media-next": ["input keyevent 87", "next"], "media-previous": ["input keyevent 88", "previous"],
+    "media-stop": ["input keyevent 86", "stop"], "media-forward": ["input keyevent 90", "forward"], "media-rewind": ["input keyevent 89", "rewind"],
+  };
+  it("routes media presets through media.sh and still recognises old keyevent commands", () => {
+    expect(MEDIA_SH).toBe("/data/adb/modules/oplus-sidekey/media.sh");
+    for (const [id, [old, verb]] of Object.entries(legacy)) {
+      const preset = findPreset(id)!;
+      expect(buildPresetCommand(preset, {})).toBe(`sh ${MEDIA_SH} ${verb}`);
+      expect(matchPreset(old)?.preset).toBe(preset);
+      expect(describeCommand(old)).toEqual({ name: preset.name, builtin: true });
+    }
+    expect(buildPresetCommand(findPreset("volume-up")!, {})).toBe("input keyevent 24");
+  });
+  it("upgrades exact legacy media commands only", () => {
+    const { bindings, upgraded } = upgradeLegacyCommands({ "0": "input keyevent 85", "00": "input keyevent 87", "1": "input keyevent 24", "01": "input keyevent 85 && echo x" });
+    expect(upgraded).toBe(2);
+    expect(bindings).toEqual({ "0": `sh ${MEDIA_SH} toggle`, "00": `sh ${MEDIA_SH} next`, "1": "input keyevent 24", "01": "input keyevent 85 && echo x" });
+    const same = { "0": "echo hi" };
+    expect(upgradeLegacyCommands(same)).toEqual({ bindings: same, upgraded: 0 });
   });
 });

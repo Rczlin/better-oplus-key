@@ -16,7 +16,7 @@ import { parseEventsJsonl, parseExplainLog, type ExplainRow, type EventRow } fro
 import { parseOutputJsonl, type OutputRecord } from "@/lib/output";
 import { computeMetrics, dashboardCmd, localDate, parseDashboard, todayStats, type KnownSizes, type ServiceMetrics, type ServiceSnapshot, type TodayStats } from "@/lib/service";
 import { startCmd, statusCmd, stopCmd, saveCmd, parseDaemonResult, templatesReadCmd, templatesSaveCmd, parseTemplateSaveResult } from "@/lib/daemon";
-import { describeCommand, matchPreset, parsePackageList, shellQuote, type Preset, type PresetPack } from "@/lib/presets";
+import { describeCommand, matchPreset, upgradeLegacyCommands, parsePackageList, shellQuote, type Preset, type PresetPack } from "@/lib/presets";
 import { mergeCommands, parseTemplates, serializeTemplates, upsertTemplate, removeTemplate, type ShellTemplate } from "@/lib/templates";
 
 const MODDIR = "/data/adb/modules/oplus-sidekey";
@@ -93,7 +93,11 @@ export default function App() {
       if (r.errno !== 0) throw new Error(r.stderr || `读取配置失败：${r.errno}`);
       const loaded = parseConfig(r.stdout);
       if (loaded.errors.length) throw new Error("无效配置：" + loaded.errors.join("、") + "；时间须为 100–1200 整数，命令须为单行且最多 4095 个 UTF-8 字节");
-      setCfg(loaded); setDisk(fingerprint(loaded)); setConfigState("ready"); setConfigError(""); return true;
+      // 旧版媒体命令（input keyevent）升级为媒体会话控制，只改草稿，保存后生效。
+      const { bindings, upgraded } = upgradeLegacyCommands(loaded.bindings);
+      setCfg(upgraded ? { ...loaded, bindings } : loaded); setDisk(fingerprint(loaded)); setConfigState("ready"); setConfigError("");
+      if (upgraded) toast.info(`已把 ${upgraded} 个媒体绑定升级为控制中心同款控制，保存后生效`);
+      return true;
     } catch (e) { setConfigError(message(e)); setConfigState("error"); return false; }
     finally { operation.current = false; setBusy(null); }
   }, [ksu]);

@@ -56,6 +56,24 @@ describe("binding workflow", () => {
     expect(saved).toContain("01001=echo mixed\n");
     expect(screen.getByTestId("save-state")).toHaveTextContent("已保存");
   });
+  it("upgrades legacy media keyevents to media session control in the draft", async () => {
+    let saved = "";
+    const info = vi.spyOn(toast, "info");
+    bridge((shell, cb) => {
+      if (shell.includes("base64 -d")) {
+        saved = Buffer.from(shell.match(/printf '%s' '([^']+)' \| base64 -d/)?.[1] ?? "", "base64").toString("utf8");
+        reply(cb, 0, "saved-hup-requested\n");
+      } else reply(cb, 0, shell === configRead ? "keycode=767\n0=input keyevent 85\n00=input keyevent 87\n1=input keyevent 24\n" : "stopped\n");
+    });
+    render(<App />); await loaded();
+    expect(info).toHaveBeenCalledWith("已把 2 个媒体绑定升级为控制中心同款控制，保存后生效");
+    expect(screen.getByText("未保存")).toBeInTheDocument();
+    expect(within(document.querySelector('[data-test="binding-0"]') as HTMLElement).getByTestId("binding-action")).toHaveTextContent("播放 / 暂停");
+    click("保存配置"); await screen.findByText("配置已保存，已发送应用请求");
+    expect(saved).toContain("0=sh /data/adb/modules/oplus-sidekey/media.sh toggle\n");
+    expect(saved).toContain("00=sh /data/adb/modules/oplus-sidekey/media.sh next\n");
+    expect(saved).toContain("1=input keyevent 24\n");
+  });
   it("edits, cancels, detects duplicates, undoes, clears and deletes only the chosen binding", async () => {
     bridge(); render(<App />); await loaded();
     const row = document.querySelector('[data-test="binding-0"]') as HTMLElement;

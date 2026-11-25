@@ -26,6 +26,8 @@ export interface Preset {
   build?(values: Record<string, string>): string;
   /** 带参数动作：从命令反解参数，用于回显与显示名称。 */
   parse?(command: string): Record<string, string> | null;
+  /** 旧版本写入的等价命令：仍识别为本动作，读取配置时自动升级。 */
+  legacyCommands?: string[];
   /** 带参数动作的显示名称，例如“打开应用：com.tencent.mm”。 */
   label?(values: Record<string, string>): string;
 }
@@ -55,6 +57,9 @@ const unquote = (s: string) => s.replaceAll(`'\\''`, "'");
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 const key = (code: number) => `input keyevent ${code}`;
+/** 模块自带的媒体控制脚本：经系统媒体会话下发，效果同控制中心媒体卡片。 */
+export const MEDIA_SH = "/data/adb/modules/oplus-sidekey/media.sh";
+const media = (verb: string, legacyCode: number) => ({ command: `sh ${MEDIA_SH} ${verb}`, legacyCommands: [key(legacyCode)] });
 // 按 case 匹配“当前为开”的取值；其他取值（含未设置时的 null）一律按“关”处理并打开。
 const onOff = (read: string, onValues: string, turnOff: string, turnOn: string) =>
   `case "$(${read})" in ${onValues}) ${turnOff};; *) ${turnOn};; esac`;
@@ -106,12 +111,13 @@ export const PRESETS: Preset[] = [
   { id: "collapse-panels", name: "收起通知栏", description: "收起已展开的通知栏或控制中心", category: "system", command: "cmd statusbar collapse" },
   { id: "assistant", name: "语音助手", description: "唤起系统默认助手", category: "system", command: key(219) },
   // 媒体与音量
-  { id: "media-play-pause", name: "播放 / 暂停", description: "控制正在播放的音乐或视频", category: "media", command: key(85) },
-  { id: "media-next", name: "下一首", description: "切换到下一首", category: "media", command: key(87) },
-  { id: "media-previous", name: "上一首", description: "切换到上一首", category: "media", command: key(88) },
-  { id: "media-stop", name: "停止播放", description: "停止当前媒体播放", category: "media", command: key(86) },
-  { id: "media-forward", name: "快进", description: "支持的播放器中快进", category: "media", command: key(90) },
-  { id: "media-rewind", name: "快退", description: "支持的播放器中快退", category: "media", command: key(89) },
+  // 媒体：与控制中心媒体卡片相同，直接控制正在/最近播放的应用，不受前台应用影响。
+  { id: "media-play-pause", name: "播放 / 暂停", description: "像控制中心一样：正在播放就暂停，否则继续播放", category: "media", ...media("toggle", 85) },
+  { id: "media-next", name: "下一首", description: "控制中心同款，后台播放也能切歌", category: "media", ...media("next", 87) },
+  { id: "media-previous", name: "上一首", description: "控制中心同款，后台播放也能切歌", category: "media", ...media("previous", 88) },
+  { id: "media-stop", name: "停止播放", description: "停止当前媒体播放", category: "media", ...media("stop", 86) },
+  { id: "media-forward", name: "快进", description: "支持的播放器中快进", category: "media", ...media("forward", 90) },
+  { id: "media-rewind", name: "快退", description: "支持的播放器中快退", category: "media", ...media("rewind", 89) },
   { id: "volume-up", name: "音量加", description: "提高当前音量一级", category: "media", command: key(24) },
   { id: "volume-down", name: "音量减", description: "降低当前音量一级", category: "media", command: key(25) },
   { id: "volume-mute", name: "静音切换", description: "切换媒体静音（个别机型只弹出音量面板）", category: "media", command: key(164) },
@@ -205,7 +211,7 @@ export function buildPresetCommand(preset: Preset, values: Record<string, string
 
 /** 把命令反查为内置动作（含参数）；用于编辑已有绑定时回显。固定命令优先于参数动作。 */
 export function matchPreset(command: string): { preset: Preset; values: Record<string, string> } | null {
-  const fixed = PRESETS.find(p => p.command === command);
+  const fixed = PRESETS.find(p => p.command === command) ?? PRESETS.find(p => p.legacyCommands?.includes(command));
   if (fixed) return { preset: fixed, values: {} };
   for (const preset of PRESETS) {
     const values = preset.parse?.(command);
@@ -220,6 +226,18 @@ export function describeCommand(command: string, templates: ShellTemplate[] = []
   const template = templates.find(t => t.command === command);
   if (template) return { name: template.name, builtin: false };
   return { name: decodeScript(command) !== null ? "多行脚本" : "自定义命令", builtin: false };
+}
+
+/** 把与旧版内置动作完全相同的命令换成当前写法；其他命令原样保留。 */
+export function upgradeLegacyCommands(bindings: Record<string, string>): { bindings: Record<string, string>; upgraded: number } {
+  let upgraded = 0;
+  const next: Record<string, string> = {};
+  for (const [seq, command] of Object.entries(bindings)) {
+    const preset = PRESETS.find(p => p.command && p.legacyCommands?.includes(command));
+    if (preset?.command) { next[seq] = preset.command; upgraded++; }
+    else next[seq] = command;
+  }
+  return { bindings: upgraded ? next : bindings, upgraded };
 }
 
 /** 把方案合并进绑定草稿；返回被替换（命令不同）的已有组合。 */
