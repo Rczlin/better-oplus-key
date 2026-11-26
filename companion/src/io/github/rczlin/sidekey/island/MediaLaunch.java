@@ -28,7 +28,13 @@ public final class MediaLaunch {
             MediaLaunchArgs a = MediaLaunchArgs.parse(argv);
             if (Looper.myLooper() == null) Looper.prepareMainLooper();
             Context ctx = Poster.systemContext();
-            MediaSessionManager msm = ctx.getSystemService(MediaSessionManager.class);
+            MediaSessionManager msm = null;
+            try {
+                msm = ctx.getSystemService(MediaSessionManager.class);
+            } catch (Throwable t) {
+                // 拿不到会话服务：仍可走控制中心的事件方式，只是无法确认播放状态
+                out("media.warn", "no MediaSessionManager: " + t);
+            }
             int userId = android.os.Process.myUid() / 100000;
             switch (a.mode) {
                 case LIST:
@@ -107,6 +113,7 @@ public final class MediaLaunch {
     }
 
     private static MediaController find(MediaSessionManager msm, String pkg) {
+        if (msm == null) return null;
         for (MediaController c : msm.getActiveSessions(null)) {
             if (pkg.equals(c.getPackageName())) return c;
         }
@@ -130,6 +137,12 @@ public final class MediaLaunch {
     }
 
     private static boolean waitPlaying(MediaSessionManager msm, String pkg, long ms) {
+        if (msm == null) {
+            // 无法确认：事件已发出，按成功处理，避免再补一次播放键
+            SystemClock.sleep(Math.min(ms, 1000));
+            out("media.confirm", "skip");
+            return true;
+        }
         long deadline = SystemClock.elapsedRealtime() + ms;
         do {
             if (isPlaying(find(msm, pkg))) return true;

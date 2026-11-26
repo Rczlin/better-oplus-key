@@ -1,3 +1,7 @@
+# 0.5.12
+
+- 修复 0.5.11 “继续最近 / 指定应用”在真机上报 `NullPointerException: ... MediaServiceManager.getMediaSessionServiceRegisterer()`：伴生组件在 app_process 里没有初始化 Mainline 媒体模块，取 MediaSessionManager 失败，整个拉起直接退回系统媒体按键。现在启动时补上 `ActivityThread.initializeMainlineModules()`；万一仍取不到，也会照常发送控制中心的播放事件，只是不再确认播放状态。
+
 # 0.5.11
 
 - “继续最近”改为与 ColorOS 控制中心空媒体卡片的播放键完全相同：从系统媒体中心的历史播放器里取最近一个，先解除 ColorOS 对它的后台冻结，再发送“播放”，并确认真的开始播放；确认不了才退回系统媒体按键。0.5.10 只发系统媒体按键，播放器被冻结时没有反应。

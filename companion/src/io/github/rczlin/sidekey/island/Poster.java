@@ -229,7 +229,33 @@ public final class Poster {
         sys.setAccessible(true);
         sys.setBoolean(thread, true);
         fillConfigurationController(at, thread);
+        initMainlineModules(at);
         return (Context) at.getMethod("getSystemContext").invoke(thread);
+    }
+
+    /**
+     * 正常进程由 ActivityThread.main() 调用 initializeMainlineModules()，为 MediaSessionManager 等
+     * Mainline 模块注入服务管理器；app_process 不走这一步，getSystemService(MediaSessionManager) 会因
+     * MediaServiceManager 为 null 抛 NullPointerException。这里补上，已初始化（重复调用）时忽略。
+     */
+    static void initMainlineModules(Class<?> at) {
+        try {
+            Method m = at.getDeclaredMethod("initializeMainlineModules");
+            m.setAccessible(true);
+            m.invoke(null);
+            return;
+        } catch (Throwable ignored) {
+            // 方法不存在或已初始化：下面单独补媒体
+        }
+        try {
+            Class<?> init = Class.forName("android.media.MediaFrameworkPlatformInitializer");
+            Class<?> msm = Class.forName("android.media.MediaServiceManager");
+            Constructor<?> c = msm.getDeclaredConstructor();
+            c.setAccessible(true);
+            init.getMethod("setMediaServiceManager", msm).invoke(null, c.newInstance());
+        } catch (Throwable ignored) {
+            // 已设置或系统没有该类
+        }
     }
 
     /**
