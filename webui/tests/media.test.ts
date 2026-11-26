@@ -17,3 +17,13 @@ describe("media idle settings", () => {
     expect(mediaWriteCmd("/m", { idle: "app", app: "com.a.b" })).toBe("printf '%s' 'idle=app\napp=com.a.b\n' > /m/media.conf && echo media-saved");
   });
 });
+
+import { filterApps, parseAppList } from "../src/lib/apps";
+describe("app list", () => {
+  it("parses, puts music apps first and filters", () => {
+    const apps = parseAppList("app\tcom.b\tB 浏览器\t0\napp\tcom.m\t音乐\t1\tAAAA\nnoise\n");
+    expect(apps.map(a => a.pkg)).toEqual(["com.m", "com.b"]);
+    expect(apps[0].icon).toBe("data:image/png;base64,AAAA");
+    expect(filterApps(apps, "浏览").map(a => a.pkg)).toEqual(["com.b"]);
+  });
+});

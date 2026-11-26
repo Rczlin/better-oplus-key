@@ -8,6 +8,8 @@ public final class MediaLaunchArgsAccess {
 
     public static int waitMs(String... argv) { return MediaLaunchArgs.parse(argv).waitMs; }
 
+    public static String mode(String... argv) { return MediaLaunchArgs.parse(argv).mode.name(); }
+
     public static boolean rejects(String... argv) {
         try {
             MediaLaunchArgs.parse(argv);

@@ -28,8 +28,11 @@ echo "$*" >> "$STUB/input.log"
 """,
     "app_process": r"""#!/bin/sh
 echo "$*" >> "$STUB/app_process.log"
-if [ -f "$STUB/launch_timeout" ]; then echo "media.launch=timeout"; exit 1; fi
-echo "media.launch=app"
+if [ -f "$STUB/launch_timeout" ]; then echo "media.launch=timeout"; echo "media.error=no history player"; exit 1; fi
+case "$*" in
+  *--recent*) echo "media.app=com.heytap.music"; echo "media.via=event"; echo "media.launch=history" ;;
+  *) echo "media.app=$5"; echo "media.launch=app" ;;
+esac
 """,
     "monkey": r"""#!/bin/sh
 echo "$*" >> "$STUB/monkey.log"
@@ -145,6 +148,28 @@ class MediaScriptTest(unittest.TestCase):
                     self.assertEqual(self.log("cmd"), "media_session dispatch play\n")
                     self.assertIn("media=play via=session", out)
 
+    def apk(self):
+        (self.tmp / "companion").mkdir(exist_ok=True)
+        (self.tmp / "companion" / "island.apk").write_bytes(b"PK")
+
+    def test_idle_recent_resumes_history_player_like_control_center(self):
+        self.apk()
+        self.dumpsys(self.EMPTY)
+        rc, out = self.run_media("toggle")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("media=launch via=history app=com.heytap.music", out)
+        self.assertIn("io.github.rczlin.sidekey.island.MediaLaunch --recent", self.log("app_process"))
+        self.assertEqual(self.log("cmd"), "")
+
+    def test_idle_recent_falls_back_to_media_button(self):
+        self.apk()
+        (self.stub / "launch_timeout").touch()
+        self.dumpsys(self.EMPTY)
+        rc, out = self.run_media("toggle")
+        self.assertEqual(rc, 0)
+        self.assertIn("media.error=no history player", out)
+        self.assertEqual(self.log("cmd"), "media_session dispatch play\n")
+
     def test_idle_skip_keys_do_nothing(self):
         self.dumpsys(self.EMPTY)
         for verb in ("next", "previous", "pause", "stop", "forward", "rewind"):
@@ -167,8 +192,7 @@ class MediaScriptTest(unittest.TestCase):
 
     def test_idle_app_launches_chosen_app(self):
         self.conf("idle=app\napp=com.netease.cloudmusic\n")
-        (self.tmp / "companion").mkdir()
-        (self.tmp / "companion" / "island.apk").write_bytes(b"PK")
+        self.apk()
         self.dumpsys(self.EMPTY)
         rc, out = self.run_media("toggle")
         self.assertEqual(rc, 0, out)
@@ -178,8 +202,7 @@ class MediaScriptTest(unittest.TestCase):
 
     def test_idle_app_timeout_falls_back_to_recent(self):
         self.conf("idle=app\napp=com.netease.cloudmusic\n")
-        (self.tmp / "companion").mkdir()
-        (self.tmp / "companion" / "island.apk").write_bytes(b"PK")
+        self.apk()
         (self.stub / "launch_timeout").touch()
         self.dumpsys(self.EMPTY)
         rc, out = self.run_media("play")

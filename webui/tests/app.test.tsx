@@ -79,7 +79,7 @@ describe("binding workflow", () => {
     bridge((shell, cb) => {
       if (shell.includes("> /data/adb/modules/oplus-sidekey/media.conf")) { writes.push(shell); reply(cb, 0, "media-saved\n"); }
       else if (shell.startsWith("cat /data/adb/modules/oplus-sidekey/media.conf")) reply(cb, 0, "idle=none\napp=\n");
-      else if (shell === "pm list packages -3") reply(cb, 0, "package:com.netease.cloudmusic\n");
+      else if (shell.includes("island.AppList")) reply(cb, 0, "app\tcom.android.chrome\tChrome\t0\napp\tcom.netease.cloudmusic\t网易云音乐\t1\n");
       else reply(cb, 0, shell === configRead ? persistedConfig : "stopped\n");
     });
     render(<App />); await loaded();
@@ -88,10 +88,15 @@ describe("binding workflow", () => {
     fireEvent.click(group.getByLabelText("指定应用"));
     await waitFor(() => expect(writes).toHaveLength(1));
     expect(writes[0]).toContain("idle=app");
-    click("读取应用");
-    fireEvent.change(await screen.findByRole("combobox", { name: "已安装应用" }), { target: { value: "com.netease.cloudmusic" } });
+    const sheet = within(await screen.findByRole("dialog", { name: "选择音乐应用" }));
+    expect(within(sheet.getByRole("region", { name: "音乐应用" })).getByText("网易云音乐")).toBeInTheDocument();
+    fireEvent.change(sheet.getByLabelText("搜索应用"), { target: { value: "chrome" } });
+    expect(sheet.queryByText("网易云音乐")).toBeNull();
+    fireEvent.change(sheet.getByLabelText("搜索应用"), { target: { value: "云" } });
+    fireEvent.click(sheet.getByText("网易云音乐"));
     await waitFor(() => expect(writes).toHaveLength(2));
     expect(writes[1]).toContain("idle=app\napp=com.netease.cloudmusic\n");
+    await waitFor(() => expect(screen.getByTestId("media-app-row")).toHaveTextContent("网易云音乐"));
   });
   it("edits, cancels, detects duplicates, undoes, clears and deletes only the chosen binding", async () => {
     bridge(); render(<App />); await loaded();

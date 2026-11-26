@@ -3,22 +3,24 @@ package io.github.rczlin.sidekey.island;
 import android.content.Context;
 import android.media.session.MediaController;
 import android.media.session.MediaSessionManager;
+import android.media.session.PlaybackState;
 import android.os.Looper;
 import android.os.SystemClock;
 import java.util.List;
 
 /**
- * 没有可控播放器时，拉起指定音乐应用并开始播放（media.sh 在“打开指定应用”模式下调用）：
- *   app_process -Djava.class.path=island.apk /system/bin io.github.rczlin.sidekey.island.MediaLaunch <包名> [等待毫秒]
- *
- * 与控制中心媒体卡片相同，直接调用该应用媒体会话的 TransportControls.play()：
- * 1. 应用已有会话（例如停止后仍保留）时直接播放，不打开界面；
- * 2. 否则打开应用，等它建立媒体会话后再播放（多数音乐应用启动时会恢复上次的歌曲）。
- * root（uid 0）可读取全部活动会话；只使用 binder 调用，不需要绑定服务。
- * 输出：media.launch=session|app|timeout|error，以及 media.error=…
+ * 没有可控播放器时拉起音乐（media.sh 调用，root，app_process）：
+ *   MediaLaunch --recent          与控制中心空卡片的播放键相同：解冻并继续最近的历史播放器
+ *   MediaLaunch <包名> [等待毫秒] 拉起指定应用：在历史里就按控制中心方式继续；否则对它的会话 play()；
+ *                                 再不行就打开应用，等它建立会话后 play()
+ *   MediaLaunch --list            列出系统记录的历史播放器（诊断用）
+ * 每一步发出“播放”后都会确认会话真的进入播放状态，确认不了返回 1，由 media.sh 再交给系统媒体按键兜底。
+ * 输出：media.launch=history|session|app|timeout|none|error，media.app=…，media.via=event|token，media.error=…
  */
 public final class MediaLaunch {
     private MediaLaunch() {}
+
+    private static final long CONFIRM_MS = 3000;
 
     public static void main(String[] argv) {
         int status;
@@ -27,19 +29,17 @@ public final class MediaLaunch {
             if (Looper.myLooper() == null) Looper.prepareMainLooper();
             Context ctx = Poster.systemContext();
             MediaSessionManager msm = ctx.getSystemService(MediaSessionManager.class);
-            if (play(msm, a.pkg)) {
-                out("media.launch", "session");
-                status = 0;
-            } else {
-                launch(a.pkg);
-                long deadline = SystemClock.elapsedRealtime() + a.waitMs;
-                boolean played = false;
-                while (!played && SystemClock.elapsedRealtime() < deadline) {
-                    SystemClock.sleep(200);
-                    played = play(msm, a.pkg);
-                }
-                out("media.launch", played ? "app" : "timeout");
-                status = played ? 0 : 1;
+            int userId = android.os.Process.myUid() / 100000;
+            switch (a.mode) {
+                case LIST:
+                    for (OplusMedia.Player p : OplusMedia.history()) out("player", p.pkg + "\t" + p.playerId);
+                    status = 0;
+                    break;
+                case RECENT:
+                    status = recent(ctx, msm, userId) ? 0 : 1;
+                    break;
+                default:
+                    status = app(ctx, msm, userId, a) ? 0 : 1;
             }
         } catch (Throwable t) {
             Throwable root = t;
@@ -52,15 +52,89 @@ public final class MediaLaunch {
         System.exit(status);
     }
 
-    /** 找到该应用的媒体会话就播放；同一应用有多个会话时取系统排序靠前（最近活跃）的一个。 */
-    private static boolean play(MediaSessionManager msm, String pkg) {
-        List<MediaController> sessions = msm.getActiveSessions(null);
-        for (MediaController c : sessions) {
-            if (pkg.equals(c.getPackageName())) {
-                c.getTransportControls().play();
+    private static boolean recent(Context ctx, MediaSessionManager msm, int userId) throws Exception {
+        if (!OplusMedia.available()) {
+            out("media.launch", "none");
+            out("media.error", "not ColorOS media center");
+            return false;
+        }
+        List<OplusMedia.Player> history = OplusMedia.history();
+        if (history.isEmpty()) {
+            out("media.launch", "none");
+            out("media.error", "no history player");
+            return false;
+        }
+        return resumeHistory(ctx, msm, userId, history.get(0));
+    }
+
+    private static boolean resumeHistory(Context ctx, MediaSessionManager msm, int userId, OplusMedia.Player p) throws Exception {
+        OplusMedia.unfreeze(ctx, p.pkg, userId);
+        String via = OplusMedia.resume(ctx, p);
+        out("media.app", p.pkg);
+        out("media.via", via);
+        boolean ok = waitPlaying(msm, p.pkg, CONFIRM_MS);
+        out("media.launch", ok ? "history" : "timeout");
+        return ok;
+    }
+
+    private static boolean app(Context ctx, MediaSessionManager msm, int userId, MediaLaunchArgs a) throws Exception {
+        out("media.app", a.pkg);
+        if (OplusMedia.available()) {
+            try {
+                for (OplusMedia.Player p : OplusMedia.history()) {
+                    if (a.pkg.equals(p.pkg)) return resumeHistory(ctx, msm, userId, p);
+                }
+            } catch (Throwable ignored) {
+                // 历史接口不可用：继续下面的方式
+            }
+        }
+        OplusMedia.unfreeze(ctx, a.pkg, userId);
+        if (play(msm, a.pkg) && waitPlaying(msm, a.pkg, CONFIRM_MS)) {
+            out("media.launch", "session");
+            return true;
+        }
+        launch(a.pkg);
+        long deadline = SystemClock.elapsedRealtime() + a.waitMs;
+        while (SystemClock.elapsedRealtime() < deadline) {
+            SystemClock.sleep(200);
+            if (play(msm, a.pkg) && waitPlaying(msm, a.pkg, CONFIRM_MS)) {
+                out("media.launch", "app");
                 return true;
             }
         }
+        out("media.launch", "timeout");
+        return false;
+    }
+
+    private static MediaController find(MediaSessionManager msm, String pkg) {
+        for (MediaController c : msm.getActiveSessions(null)) {
+            if (pkg.equals(c.getPackageName())) return c;
+        }
+        return null;
+    }
+
+    private static boolean play(MediaSessionManager msm, String pkg) {
+        MediaController c = find(msm, pkg);
+        if (c == null) return false;
+        c.getTransportControls().play();
+        return true;
+    }
+
+    private static boolean isPlaying(MediaController c) {
+        PlaybackState s = c == null ? null : c.getPlaybackState();
+        if (s == null) return false;
+        int st = s.getState();
+        return st == PlaybackState.STATE_PLAYING || st == PlaybackState.STATE_BUFFERING
+                || st == PlaybackState.STATE_CONNECTING || st == PlaybackState.STATE_FAST_FORWARDING
+                || st == PlaybackState.STATE_REWINDING;
+    }
+
+    private static boolean waitPlaying(MediaSessionManager msm, String pkg, long ms) {
+        long deadline = SystemClock.elapsedRealtime() + ms;
+        do {
+            if (isPlaying(find(msm, pkg))) return true;
+            SystemClock.sleep(150);
+        } while (SystemClock.elapsedRealtime() < deadline);
         return false;
     }
 

@@ -10,7 +10,10 @@ public class MediaLaunchArgsTest {
         check(MediaLaunchArgsAccess.waitMs("com.a.b") == 5000, "default wait");
         check(MediaLaunchArgsAccess.waitMs("com.a.b", "99999") == 15000, "clamp max");
         check(MediaLaunchArgsAccess.waitMs("com.a.b", "-5") == 0, "clamp min");
-        for (String[] bad : new String[][] { {}, {"nodot"}, {"com.a;reboot"}, {"com.a.b", "x"}, {"com.a.b", "1", "2"} }) {
+        check(MediaLaunchArgsAccess.mode("--recent").equals("RECENT"), "recent");
+        check(MediaLaunchArgsAccess.mode("--list").equals("LIST"), "list");
+        check(MediaLaunchArgsAccess.mode("com.a.b").equals("APP"), "app");
+        for (String[] bad : new String[][] { {}, {"nodot"}, {"com.a;reboot"}, {"com.a.b", "x"}, {"com.a.b", "1", "2"}, {"--recent", "1"}, {"--bogus"} }) {
             check(MediaLaunchArgsAccess.rejects(bad), "rejects " + String.join(" ", bad));
         }
         System.out.println("MediaLaunchArgsTest OK");

@@ -1,5 +1,5 @@
 import type { CSSProperties, RefObject } from "react";
-import { Plus, Pencil, Trash2, SlidersHorizontal, Keyboard, ChevronRight, Sparkles, BellRing, Send, Wrench, RotateCcw, ScrollText, Music, Download } from "lucide-react";
+import { Plus, Pencil, Trash2, SlidersHorizontal, Keyboard, ChevronRight, Sparkles, BellRing, Send, Wrench, RotateCcw, ScrollText, Music } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -12,7 +12,9 @@ import { ISLAND_STATE_TEXT, type IslandState } from "@/lib/island";
 import type { Binding } from "./BindingEditor";
 import { describeCommand, validatePackageName } from "@/lib/presets";
 import { MEDIA_IDLE_MODES, type MediaSettings } from "@/lib/media";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { AppIcon, AppPicker } from "@/components/AppPicker";
+import type { AppInfo } from "@/lib/apps";
 import type { ShellTemplate } from "@/lib/templates";
 
 // 时间预设：普通用户不必理解毫秒数。
@@ -58,35 +60,35 @@ export interface MediaProps {
   settings: MediaSettings | null;
   busy: boolean;
   onChange(next: MediaSettings): void;
-  onListPackages?(): Promise<string[]>;
+  /** 读取可选应用（带名称与图标） */
+  onListApps?(): Promise<AppInfo[]>;
 }
 
 /** 媒体动作在没有播放器时怎么做；改完立即写入 media.conf，不需要保存配置。 */
 function MediaIdleGroup({ media }: { media: MediaProps }) {
   const s = media.settings;
-  const [draft, setDraft] = useState<string | null>(null);
-  const [packages, setPackages] = useState<string[] | null>(null);
-  const [loading, setLoading] = useState(false);
-  const app = draft ?? s?.app ?? "";
-  const appValid = validatePackageName(app);
-  const commit = (value: string) => { if (s && validatePackageName(value) && value !== s.app) media.onChange({ ...s, app: value }); setDraft(null); };
-  const load = async () => { if (!media.onListPackages) return; setLoading(true); try { setPackages(await media.onListPackages()); } catch { setPackages([]); } finally { setLoading(false); } };
+  const [apps, setApps] = useState<AppInfo[] | null>(null);
+  const [appsError, setAppsError] = useState<string>();
+  const [picking, setPicking] = useState(false);
+  const load = async () => {
+    if (!media.onListApps || apps) return;
+    setAppsError(undefined);
+    try { setApps(await media.onListApps()); } catch (e) { setAppsError("读取应用失败：" + (e instanceof Error ? e.message : String(e))); }
+  };
+  // 显示已选应用的名称与图标：异步读取，回调里再更新状态
+  useEffect(() => { if (s?.idle === "app" && s.app && !apps) { const t = setTimeout(() => void load(), 0); return () => clearTimeout(t); } }, [s?.idle, s?.app]); // eslint-disable-line react-hooks/exhaustive-deps
+  const chosen = s?.app ? apps?.find(a => a.pkg === s.app) ?? { pkg: s.app, label: s.app, music: false } : undefined;
   return <Group aria-labelledby="media-idle-title" header={<span id="media-idle-title">媒体：没有播放时</span>} plain footer="用于“播放 / 暂停”。有播放器（控制中心显示媒体卡片）时始终直接控制它；上一首、下一首在没有播放器时不做任何事。改动立即生效。">
     <div className="grid min-w-0 gap-4 p-4">
       <div className="flex min-w-0 items-start gap-3"><IconTile icon={Music} color="pink" /><p className="min-w-0 text-[14px] leading-[1.5] text-muted-foreground">{s ? MEDIA_IDLE_MODES.find(m => m.value === s.idle)?.help : "正在读取…"}</p></div>
-      <div role="radiogroup" aria-label="没有播放时" className="segmented">{MEDIA_IDLE_MODES.map(m => <label key={m.value} title={m.help} className="segmented-item"><input type="radio" name="media-idle" className="sr-only" value={m.value} checked={s?.idle === m.value} disabled={!s || media.busy} onChange={() => s && media.onChange({ ...s, idle: m.value })} />{m.label}</label>)}</div>
-      {s?.idle === "app" && <div className="grid min-w-0 gap-2">
-        <Label htmlFor="media-app" className="text-[13px] text-muted-foreground">音乐应用包名</Label>
-        <div className="flex min-w-0 gap-2">
-          <Input id="media-app" list="media-app-list" placeholder="com.netease.cloudmusic" className="h-11 min-w-0 flex-1 font-mono" aria-invalid={app !== "" && !appValid} value={app} disabled={media.busy} onChange={e => setDraft(e.target.value.trim())} onBlur={() => commit(app)} onKeyDown={e => { if (e.key === "Enter") commit(app); }} />
-          {media.onListPackages && <Button type="button" variant="outline" className="h-11 shrink-0" disabled={loading} onClick={() => void load()}><Download />{loading ? "读取中…" : "读取应用"}</Button>}
-        </div>
-        {packages && <datalist id="media-app-list">{packages.map(p => <option key={p} value={p} />)}</datalist>}
-        {packages && <select aria-label="已安装应用" className="h-11 min-w-0 rounded-xl bg-muted px-3 text-[15px]" value={packages.includes(app) ? app : ""} onChange={e => { setDraft(e.target.value); commit(e.target.value); }}><option value="">从已安装应用中选择…</option>{packages.map(p => <option key={p} value={p}>{p}</option>)}</select>}
-        {!s.app && <Notice tone="warning" className="text-[13px]">还没选应用：暂时按“继续最近”处理。</Notice>}
-        {app !== "" && !appValid && <p role="alert" className="text-[13px] text-destructive">请填写有效的应用包名，例如 com.netease.cloudmusic</p>}
-      </div>}
+      <div role="radiogroup" aria-label="没有播放时" className="segmented">{MEDIA_IDLE_MODES.map(m => <label key={m.value} title={m.help} className="segmented-item"><input type="radio" name="media-idle" className="sr-only" value={m.value} checked={s?.idle === m.value} disabled={!s || media.busy} onChange={() => { if (!s) return; media.onChange({ ...s, idle: m.value }); if (m.value === "app" && !s.app) { setPicking(true); void load(); } }} />{m.label}</label>)}</div>
     </div>
+    {s?.idle === "app" && <button type="button" data-testid="media-app-row" className="flex min-h-14 w-full min-w-0 items-center gap-3 border-t border-border/70 px-4 py-2.5 text-left active:bg-muted disabled:opacity-50" disabled={media.busy} onClick={() => { setPicking(true); void load(); }}>
+      <AppIcon app={chosen} />
+      <span className="min-w-0 flex-1"><span className="block truncate text-[16px]">{chosen ? chosen.label : "选择音乐应用"}</span><span className="block truncate text-[12px] text-muted-foreground">{chosen ? chosen.pkg : "还没选：暂时按“继续最近”处理"}</span></span>
+      <ChevronRight aria-hidden="true" className="size-5 shrink-0 text-muted-foreground/60" />
+    </button>}
+    <AppPicker open={picking} onOpenChange={setPicking} apps={apps} error={appsError} selected={s?.app} onPick={pkg => { if (s && validatePackageName(pkg)) media.onChange({ ...s, idle: "app", app: pkg }); }} />
   </Group>;
 }
 

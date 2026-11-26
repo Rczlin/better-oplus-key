@@ -58,21 +58,38 @@ case "$APP" in
   *) APP= ;;
 esac
 
+# 拉起由伴生组件 MediaLaunch 完成（root）。--recent 与控制中心空卡片的播放键相同：
+# 从 ColorOS 媒体中心的历史播放器里取最近一个，先解冻再发送“播放”，并确认真的开始播放。
+APK="$MODDIR/companion/island.apk"
+run_launch() {
+  [ -f "$APK" ] || return 1
+  OUT=$(app_process "-Djava.class.path=$APK" /system/bin --nice-name=sidekey-media \
+    io.github.rczlin.sidekey.island.MediaLaunch "$@" 2>&1)
+  case "$OUT" in
+    *media.launch=history*|*media.launch=session*|*media.launch=app*)
+      WHO=$(echo "$OUT" | sed -n 's/^media\.app=//p' | head -n 1)
+      HOW=$(echo "$OUT" | sed -n 's/^media\.launch=//p' | head -n 1)
+      echo "media=launch via=$HOW app=$WHO"
+      exit 0 ;;
+  esac
+  ERR=$(echo "$OUT" | sed -n 's/^media\.error=//p' | head -n 1)
+  [ -n "$ERR" ] && echo "media.error=$ERR"
+  return 1
+}
+
+launch_recent() {
+  run_launch --recent
+  # 没有历史播放器或确认失败：交给系统的最近媒体按键接收者
+  VERB=play
+}
+
 launch_app() {
-  APK="$MODDIR/companion/island.apk"
   if [ -f "$APK" ]; then
-    OUT=$(app_process "-Djava.class.path=$APK" /system/bin --nice-name=sidekey-media \
-      io.github.rczlin.sidekey.island.MediaLaunch "$APP" 5000 2>&1)
-    case "$OUT" in
-      *media.launch=session*|*media.launch=app*) echo "media=launch via=app app=$APP"; exit 0 ;;
-    esac
-    ERR=$(echo "$OUT" | sed -n 's/^media\.error=//p' | head -n 1)
-    echo "media.error=${ERR:-$(echo "$OUT" | tail -n 1)}"
+    run_launch "$APP" 5000
   else
     monkey -p "$APP" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
     sleep 2
   fi
-  # 组件不可用或应用迟迟没有建立会话：再交给系统媒体按钮处理一次
   VERB=play
 }
 
@@ -84,8 +101,8 @@ if [ "$STATE" -eq 3 ]; then
     toggle|play)
       case "$IDLE" in
         none) echo "media=none via=none"; exit 0 ;;
-        app) if [ -n "$APP" ]; then launch_app; else VERB=play; fi ;;
-        *) VERB=play ;;
+        app) if [ -n "$APP" ]; then launch_app; else launch_recent; fi ;;
+        *) launch_recent ;;
       esac ;;
     *) echo "media=none via=none"; exit 0 ;;
   esac

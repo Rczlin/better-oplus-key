@@ -21,3 +21,11 @@
 - `app`：伴生 APK 新增 `MediaLaunch`（app_process，root）。先用 `MediaSessionManager.getActiveSessions(null)` 找该包的会话直接 `TransportControls.play()`；没有则 `monkey` 打开应用，每 200 ms 轮询会话，最多 5 秒后播放。失败时退回 `recent`。没有 APK 时只用 monkey 加 dispatch play。
 - 包名在 shell、Java、WebUI 三处校验，防止注入。只有 toggle/play 会拉起，其他动词在无会话时仍不动作。
 - 未真机验证：`getActiveSessions(null)` 在 uid 0 下是否需要额外权限；部分音乐应用启动后是否自动建立会话。
+
+## 0.5.11 补充：控制中心空卡片的“继续播放”
+
+- 用户反馈 0.5.10 的“继续最近”无效。继续反编译系统界面 17.99.02：`OplusQsMediaUtil.getHistoryPlayList()` 由 `OplusMediaControlManager.getHistoryMediaPlayerInfoList()` 生成空卡片；点播放走 `handleResumeApp`：`QsUtil.getAndUnFreezePackage`（`OplusPackageManager.getOplusFreezePackageState == 2` 时 `oplusUnFreezePackage(pkg, user, 1, 0, caller)`），再 `OplusMediaControlManager.sendEvent(OplusMediaEvent.Builder(1).setData(OplusPlaybackCommandData(1)).setPlayerId(playerId))`。
+- 推断 0.5.10 无效的原因：`dispatch play` 交给的最近接收者被 ColorOS 冻结，收不到按键（未真机确认）。
+- 伴生组件 `OplusMedia`（反射调用上述框架类）+ `MediaLaunch --recent|--list|<pkg>`：解冻、发事件，事件失败时用历史 token 直接 `play()`；之后最多 3 秒确认会话进入播放，否则返回 1，media.sh 退回 `dispatch play`。
+- 新增 `AppList`（root 读取启动器应用的名称、图标、是否声明 MediaBrowserService/媒体按键接收器），WebUI `AppPicker` 底部列表选择。
+- 未真机验证：uid 0 调用 `OplusMediaControlManager.sendEvent` 是否被权限拦截；历史列表顺序是否最近在前。
