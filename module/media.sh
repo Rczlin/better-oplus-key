@@ -3,7 +3,7 @@
 # 用法：media.sh toggle|play|pause|next|previous|stop|forward|rewind
 # 首选 cmd media_session dispatch：原生命令直达系统媒体会话（当前/最近播放的应用），
 # 不经过前台窗口，也不冷启动 Java 进程；不可用时退回 input keyevent。
-# 输出：media=<实际动作> via=session|keyevent，没有可控会话时 media=none via=none
+# 输出：media=<实际动作> via=session|keyevent；没有播放器时 media=none via=none 或 media=launch via=app
 
 usage() { echo "usage: media.sh toggle|play|pause|next|previous|stop|forward|rewind"; exit 2; }
 [ $# -eq 1 ] || usage
@@ -35,13 +35,60 @@ case "$VERB" in
   *) usage ;;
 esac
 
-# 与控制中心一致：没有可控会话（卡片不显示）时什么也不做，不拉起音乐应用。
-# 设置 SIDEKEY_MEDIA_LAUNCH=1 可恢复旧行为（无会话时唤起最近的播放器）。
+# 没有可控播放器（控制中心不显示媒体卡片）时的行为，读取 media.conf：
+#   idle=recent  继续最近播放的应用（默认，系统把“播放”交给最近的媒体按钮接收者）
+#   idle=app     打开 app=<包名> 指定的应用并开始播放
+#   idle=none    什么也不做
+# 只有播放/暂停与播放会拉起；上一首、下一首等在没有播放器时不做任何事。
+MODDIR=${0%/*}
+IDLE=recent
+APP=
+if [ -f "$MODDIR/media.conf" ]; then
+  while IFS='=' read -r K V; do
+    case "$K" in
+      idle) case "$V" in none|recent|app) IDLE=$V ;; esac ;;
+      app) APP=$V ;;
+    esac
+  done < "$MODDIR/media.conf"
+fi
+[ "${SIDEKEY_MEDIA_LAUNCH:-}" = 1 ] && IDLE=recent
+case "$APP" in
+  *[!A-Za-z0-9_.]*|''|.*|*.|*..*) APP= ;;
+  *.*) ;;
+  *) APP= ;;
+esac
+
+launch_app() {
+  APK="$MODDIR/companion/island.apk"
+  if [ -f "$APK" ]; then
+    OUT=$(app_process "-Djava.class.path=$APK" /system/bin --nice-name=sidekey-media \
+      io.github.rczlin.sidekey.island.MediaLaunch "$APP" 5000 2>&1)
+    case "$OUT" in
+      *media.launch=session*|*media.launch=app*) echo "media=launch via=app app=$APP"; exit 0 ;;
+    esac
+    ERR=$(echo "$OUT" | sed -n 's/^media\.error=//p' | head -n 1)
+    echo "media.error=${ERR:-$(echo "$OUT" | tail -n 1)}"
+  else
+    monkey -p "$APP" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
+    sleep 2
+  fi
+  # 组件不可用或应用迟迟没有建立会话：再交给系统媒体按钮处理一次
+  VERB=play
+}
+
+STATE=0
 session_state
 STATE=$?
-if [ "$STATE" -eq 3 ] && [ "${SIDEKEY_MEDIA_LAUNCH:-0}" != 1 ]; then
-  echo "media=none via=none"
-  exit 0
+if [ "$STATE" -eq 3 ]; then
+  case "$VERB" in
+    toggle|play)
+      case "$IDLE" in
+        none) echo "media=none via=none"; exit 0 ;;
+        app) if [ -n "$APP" ]; then launch_app; else VERB=play; fi ;;
+        *) VERB=play ;;
+      esac ;;
+    *) echo "media=none via=none"; exit 0 ;;
+  esac
 fi
 if [ "$VERB" = toggle ]; then
   case "$STATE" in

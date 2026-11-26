@@ -1,5 +1,5 @@
 import type { CSSProperties, RefObject } from "react";
-import { Plus, Pencil, Trash2, SlidersHorizontal, Keyboard, ChevronRight, Sparkles, BellRing, Send, Wrench, RotateCcw, ScrollText } from "lucide-react";
+import { Plus, Pencil, Trash2, SlidersHorizontal, Keyboard, ChevronRight, Sparkles, BellRing, Send, Wrench, RotateCcw, ScrollText, Music, Download } from "lucide-react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -10,7 +10,9 @@ import { cn } from "@/lib/utils";
 import { ISLAND_SECONDS_DEFAULT, TIMING_MAX, TIMING_MIN, sequenceLabel, validateTiming, type IslandNotifyMode, type ParsedConfig } from "@/lib/config";
 import { ISLAND_STATE_TEXT, type IslandState } from "@/lib/island";
 import type { Binding } from "./BindingEditor";
-import { describeCommand } from "@/lib/presets";
+import { describeCommand, validatePackageName } from "@/lib/presets";
+import { MEDIA_IDLE_MODES, type MediaSettings } from "@/lib/media";
+import { useState } from "react";
 import type { ShellTemplate } from "@/lib/templates";
 
 // 时间预设：普通用户不必理解毫秒数。
@@ -51,7 +53,45 @@ export interface IslandProps {
   onTest(): void;
 }
 
+export interface MediaProps {
+  /** null：尚未读取 */
+  settings: MediaSettings | null;
+  busy: boolean;
+  onChange(next: MediaSettings): void;
+  onListPackages?(): Promise<string[]>;
+}
+
+/** 媒体动作在没有播放器时怎么做；改完立即写入 media.conf，不需要保存配置。 */
+function MediaIdleGroup({ media }: { media: MediaProps }) {
+  const s = media.settings;
+  const [draft, setDraft] = useState<string | null>(null);
+  const [packages, setPackages] = useState<string[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const app = draft ?? s?.app ?? "";
+  const appValid = validatePackageName(app);
+  const commit = (value: string) => { if (s && validatePackageName(value) && value !== s.app) media.onChange({ ...s, app: value }); setDraft(null); };
+  const load = async () => { if (!media.onListPackages) return; setLoading(true); try { setPackages(await media.onListPackages()); } catch { setPackages([]); } finally { setLoading(false); } };
+  return <Group aria-labelledby="media-idle-title" header={<span id="media-idle-title">媒体：没有播放时</span>} plain footer="用于“播放 / 暂停”。有播放器（控制中心显示媒体卡片）时始终直接控制它；上一首、下一首在没有播放器时不做任何事。改动立即生效。">
+    <div className="grid min-w-0 gap-4 p-4">
+      <div className="flex min-w-0 items-start gap-3"><IconTile icon={Music} color="pink" /><p className="min-w-0 text-[14px] leading-[1.5] text-muted-foreground">{s ? MEDIA_IDLE_MODES.find(m => m.value === s.idle)?.help : "正在读取…"}</p></div>
+      <div role="radiogroup" aria-label="没有播放时" className="segmented">{MEDIA_IDLE_MODES.map(m => <label key={m.value} title={m.help} className="segmented-item"><input type="radio" name="media-idle" className="sr-only" value={m.value} checked={s?.idle === m.value} disabled={!s || media.busy} onChange={() => s && media.onChange({ ...s, idle: m.value })} />{m.label}</label>)}</div>
+      {s?.idle === "app" && <div className="grid min-w-0 gap-2">
+        <Label htmlFor="media-app" className="text-[13px] text-muted-foreground">音乐应用包名</Label>
+        <div className="flex min-w-0 gap-2">
+          <Input id="media-app" list="media-app-list" placeholder="com.netease.cloudmusic" className="h-11 min-w-0 flex-1 font-mono" aria-invalid={app !== "" && !appValid} value={app} disabled={media.busy} onChange={e => setDraft(e.target.value.trim())} onBlur={() => commit(app)} onKeyDown={e => { if (e.key === "Enter") commit(app); }} />
+          {media.onListPackages && <Button type="button" variant="outline" className="h-11 shrink-0" disabled={loading} onClick={() => void load()}><Download />{loading ? "读取中…" : "读取应用"}</Button>}
+        </div>
+        {packages && <datalist id="media-app-list">{packages.map(p => <option key={p} value={p} />)}</datalist>}
+        {packages && <select aria-label="已安装应用" className="h-11 min-w-0 rounded-xl bg-muted px-3 text-[15px]" value={packages.includes(app) ? app : ""} onChange={e => { setDraft(e.target.value); commit(e.target.value); }}><option value="">从已安装应用中选择…</option>{packages.map(p => <option key={p} value={p}>{p}</option>)}</select>}
+        {!s.app && <Notice tone="warning" className="text-[13px]">还没选应用：暂时按“继续最近”处理。</Notice>}
+        {app !== "" && !appValid && <p role="alert" className="text-[13px] text-destructive">请填写有效的应用包名，例如 com.netease.cloudmusic</p>}
+      </div>}
+    </div>
+  </Group>;
+}
+
 interface Props {
+  media?: MediaProps;
   cfg: ParsedConfig;
   canEdit: boolean;
   dirty: boolean;
@@ -69,7 +109,7 @@ interface Props {
   island?: IslandProps;
   onSave(): void;
 }
-export function BindingsView({ cfg, canEdit, dirty, stateText, saveBusy, addButton, templates = [], onPacks, onEdit, onDelete, onTiming, onCaptureOutput, onIslandNotify, onIslandSeconds, island, onSave }: Props) {
+export function BindingsView({ media, cfg, canEdit, dirty, stateText, saveBusy, addButton, templates = [], onPacks, onEdit, onDelete, onTiming, onCaptureOutput, onIslandNotify, onIslandSeconds, island, onSave }: Props) {
   const entries = Object.entries(cfg.bindings).sort(([a], [b]) => a.length - b.length || a.localeCompare(b));
   const islandMode = cfg.islandNotify ?? 0;
   const islandSeconds = cfg.islandSeconds ?? ISLAND_SECONDS_DEFAULT;
@@ -118,6 +158,8 @@ export function BindingsView({ cfg, canEdit, dirty, stateText, saveBusy, addButt
       {onCaptureOutput && <label className="flex min-h-12 min-w-0 cursor-pointer items-center gap-3 border-t border-border/70 px-4 py-2.5"><IconTile icon={ScrollText} color="teal" /><span className="min-w-0 flex-1 text-[16px]">收集命令输出</span><input type="checkbox" className="ios-switch" checked={cfg.captureOutput !== false} disabled={!canEdit} onChange={e => onCaptureOutput(e.target.checked)} aria-describedby="capture-help" /></label>}
     </Group>
     {onCaptureOutput && <p id="capture-help" className="-mt-5 px-4 text-[13px] leading-[1.45] text-muted-foreground">在“诊断 → 命令输出”中查看每次执行打印的内容。若某条 input/am/cmd 命令仅在开启时报“执行失败（2）”，可关闭此项（输出改为丢弃）。</p>}
+
+    {media && <MediaIdleGroup media={media} />}
 
     {onIslandNotify && <Group aria-labelledby="island-title" header={<span id="island-title">流体云提示</span>} plain footer="需要 ColorOS 16 及以上。若测试提示没有出现在流体云中，请在系统设置里允许“侧键流体云提示”的通知与“实况通知/流体云”。">
       <div className="grid min-w-0 gap-4 p-4">

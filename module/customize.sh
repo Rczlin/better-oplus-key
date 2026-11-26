@@ -14,7 +14,7 @@ set_perm "$MODPATH/supervise.sh" 0 0 0755
 # 升级安装时 $MODPATH 指向 modules_update 下的新目录，旧配置留在 modules 下。
 # 先迁移用户已有的绑定与模板，避免升级后被默认配置覆盖。
 OLD_MODDIR="/data/adb/modules/${MODPATH##*/}"
-for FILE in config.conf templates.json; do
+for FILE in config.conf templates.json media.conf; do
   if [ ! -f "$MODPATH/$FILE" ] && [ -f "$OLD_MODDIR/$FILE" ] && [ "$OLD_MODDIR" != "$MODPATH" ]; then
     if cp "$OLD_MODDIR/$FILE" "$MODPATH/$FILE"; then
       chmod 0644 "$MODPATH/$FILE"

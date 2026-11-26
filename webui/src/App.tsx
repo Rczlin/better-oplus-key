@@ -17,6 +17,7 @@ import { parseOutputJsonl, type OutputRecord } from "@/lib/output";
 import { computeMetrics, dashboardCmd, localDate, parseDashboard, todayStats, type KnownSizes, type ServiceMetrics, type ServiceSnapshot, type TodayStats } from "@/lib/service";
 import { startCmd, statusCmd, stopCmd, saveCmd, parseDaemonResult, templatesReadCmd, templatesSaveCmd, parseTemplateSaveResult } from "@/lib/daemon";
 import { describeCommand, matchPreset, upgradeLegacyCommands, parsePackageList, shellQuote, type Preset, type PresetPack } from "@/lib/presets";
+import { MEDIA_DEFAULT, mediaReadCmd, mediaWriteCmd, parseMediaConf, type MediaSettings } from "@/lib/media";
 import { mergeCommands, parseTemplates, serializeTemplates, upsertTemplate, removeTemplate, type ShellTemplate } from "@/lib/templates";
 
 const MODDIR = "/data/adb/modules/oplus-sidekey";
@@ -60,6 +61,8 @@ export default function App() {
   const [islandStatus, setIslandStatus] = useState<IslandState | null>(null);
   const [islandBusy, setIslandBusy] = useState(false);
   const [islandResult, setIslandResult] = useState<{ ok: boolean; text: string } | null>(null);
+  const [mediaSettings, setMediaSettings] = useState<MediaSettings | null>(null);
+  const [mediaBusy, setMediaBusy] = useState(false);
   const islandChecked = useRef(false);
   const [templateState, setTemplateState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const [templateReadError, setTemplateReadError] = useState("");
@@ -248,7 +251,18 @@ export default function App() {
     if (!ksu || activeView !== "bindings" || islandChecked.current) return;
     islandChecked.current = true;
     void refreshIsland();
+    void runShell(mediaReadCmd(MODDIR)).then(r => setMediaSettings(parseMediaConf(r.stdout)), () => setMediaSettings({ ...MEDIA_DEFAULT }));
   }, [ksu, activeView, refreshIsland]);
+  const saveMedia = async (next: MediaSettings) => {
+    const prev = mediaSettings;
+    setMediaSettings(next); setMediaBusy(true);
+    try {
+      const r = await runShell(mediaWriteCmd(MODDIR, next));
+      if (r.errno !== 0 || !r.stdout.includes("media-saved")) throw new Error(r.stderr || `退出码 ${r.errno}`);
+      toast.success("媒体设置已生效");
+    } catch (e) { setMediaSettings(prev); toast.error("媒体设置保存失败：" + message(e)); }
+    finally { setMediaBusy(false); }
+  };
   const installIsland = async () => {
     setIslandBusy(true);
     try {
@@ -334,7 +348,7 @@ export default function App() {
     {templateWriteError && (activeView === "bindings" || activeView === "templates") && <p role="alert" className="min-w-0 rounded-2xl bg-ios-orange/12 px-4 py-3 text-[14px] leading-[1.5] [overflow-wrap:anywhere]">{templateWriteError}</p>}
     {dirty && activeView !== "bindings" && <div role="status" data-testid="unsaved-banner" className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-2xl bg-ios-orange/12 py-2.5 pr-2.5 pl-4 text-[14px]"><span className="flex items-center gap-2"><span aria-hidden="true" className="size-2 rounded-full bg-ios-orange" />有未保存的修改，保存后才会生效。</span><Button size="sm" disabled={!canEdit} onClick={() => void save()}>{busy === "save" ? "保存中…" : "立即保存"}</Button></div>}
     {activeView === "overview" && <OverviewView running={running} bindingCount={Object.keys(cfg.bindings).length} templateCount={templates.length} latest={latestRow} latestOutput={latestOutput && (!latestRow || latestOutput.time >= latestRow.time) ? latestOutput : undefined} snapshot={snapshot} metrics={metrics} today={today} templates={templates} autoRefresh={ksu} busy={!!busy} statusBusy={busy === "status"} enabled={ksu} canEdit={canEdit} onToggle={() => void toggleDaemon()} onRefresh={() => { void refreshStatus().then(() => refreshDashboard()); }} onAdd={trigger => openEditor(null, trigger)} onPacks={() => setPacksOpen(true)} onBindings={() => setActiveView("bindings")} onDiagnostics={() => setActiveView("diagnostics")} />}
-    {activeView === "bindings" && <BindingsView cfg={cfg} templates={templates} onPacks={() => setPacksOpen(true)} canEdit={canEdit} dirty={dirty} stateText={stateText} saveBusy={busy === "save"} addButton={addButton} onEdit={openEditor} onDelete={seq => { if (!canEdit) return; const bindings = { ...cfg.bindings }; delete bindings[seq]; setCfg({ ...cfg, bindings }); }} onTiming={(key, value) => setCfg(c => ({ ...c, [key]: value }))} onCaptureOutput={value => setCfg(c => ({ ...c, captureOutput: value }))} onIslandNotify={value => setCfg(c => ({ ...c, islandNotify: value }))} onIslandSeconds={value => setCfg(c => ({ ...c, islandSeconds: value }))} island={ksu ? { state: islandStatus, busy: islandBusy, result: islandResult, onInstall: () => void installIsland(), onTest: () => void testIsland() } : undefined} onSave={() => void save()} />}
+    {activeView === "bindings" && <BindingsView media={ksu ? { settings: mediaSettings, busy: mediaBusy, onChange: next => void saveMedia(next), onListPackages: listPackages } : undefined} cfg={cfg} templates={templates} onPacks={() => setPacksOpen(true)} canEdit={canEdit} dirty={dirty} stateText={stateText} saveBusy={busy === "save"} addButton={addButton} onEdit={openEditor} onDelete={seq => { if (!canEdit) return; const bindings = { ...cfg.bindings }; delete bindings[seq]; setCfg({ ...cfg, bindings }); }} onTiming={(key, value) => setCfg(c => ({ ...c, [key]: value }))} onCaptureOutput={value => setCfg(c => ({ ...c, captureOutput: value }))} onIslandNotify={value => setCfg(c => ({ ...c, islandNotify: value }))} onIslandSeconds={value => setCfg(c => ({ ...c, islandSeconds: value }))} island={ksu ? { state: islandStatus, busy: islandBusy, result: islandResult, onInstall: () => void installIsland(), onTest: () => void testIsland() } : undefined} onSave={() => void save()} />}
     {activeView === "templates" && <>
       {templateReadError && <p role="alert" className="min-w-0 rounded-2xl bg-destructive/12 px-4 py-3 text-[14px] text-destructive [overflow-wrap:anywhere]">模板读取失败：{templateReadError}。重新读取成功后可继续编辑。</p>}
       {templateState === "loading" && <p role="status" className="px-1 text-[14px] text-muted-foreground">正在读取模板…</p>}

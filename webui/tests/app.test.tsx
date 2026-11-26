@@ -74,6 +74,25 @@ describe("binding workflow", () => {
     expect(saved).toContain("00=sh /data/adb/modules/oplus-sidekey/media.sh next\n");
     expect(saved).toContain("1=input keyevent 24\n");
   });
+  it("reads and writes the media idle setting immediately", async () => {
+    const writes: string[] = [];
+    bridge((shell, cb) => {
+      if (shell.includes("> /data/adb/modules/oplus-sidekey/media.conf")) { writes.push(shell); reply(cb, 0, "media-saved\n"); }
+      else if (shell.startsWith("cat /data/adb/modules/oplus-sidekey/media.conf")) reply(cb, 0, "idle=none\napp=\n");
+      else if (shell === "pm list packages -3") reply(cb, 0, "package:com.netease.cloudmusic\n");
+      else reply(cb, 0, shell === configRead ? persistedConfig : "stopped\n");
+    });
+    render(<App />); await loaded();
+    const group = within(screen.getByRole("radiogroup", { name: "没有播放时" }));
+    await waitFor(() => expect(group.getByLabelText("不处理")).toBeChecked());
+    fireEvent.click(group.getByLabelText("指定应用"));
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]).toContain("idle=app");
+    click("读取应用");
+    fireEvent.change(await screen.findByRole("combobox", { name: "已安装应用" }), { target: { value: "com.netease.cloudmusic" } });
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(writes[1]).toContain("idle=app\napp=com.netease.cloudmusic\n");
+  });
   it("edits, cancels, detects duplicates, undoes, clears and deletes only the chosen binding", async () => {
     bridge(); render(<App />); await loaded();
     const row = document.querySelector('[data-test="binding-0"]') as HTMLElement;

@@ -26,6 +26,17 @@ exit 0
     "input": r"""#!/bin/sh
 echo "$*" >> "$STUB/input.log"
 """,
+    "app_process": r"""#!/bin/sh
+echo "$*" >> "$STUB/app_process.log"
+if [ -f "$STUB/launch_timeout" ]; then echo "media.launch=timeout"; exit 1; fi
+echo "media.launch=app"
+""",
+    "monkey": r"""#!/bin/sh
+echo "$*" >> "$STUB/monkey.log"
+""",
+    "sleep": r"""#!/bin/sh
+exit 0
+""",
 }
 
 NEW_PLAYING = """MEDIA SESSION SERVICE (dumpsys media_session)
@@ -118,22 +129,93 @@ class MediaScriptTest(unittest.TestCase):
         self.run_media("toggle")
         self.assertEqual(self.log("cmd"), "media_session dispatch pause\n")
 
-    def test_nothing_controllable_does_nothing(self):
-        empty = "MEDIA SESSION SERVICE (dumpsys media_session)\n    Sessions Stack - have 0 sessions:\n"
-        for text in (empty, OLD_STOPPED, NEW_PLAYING.replace("PLAYING(3)", "STOPPED(1)").replace("PAUSED(2)", "NONE(0)")):
-            for verb in ("toggle", "play", "next", "previous"):
+    EMPTY = "MEDIA SESSION SERVICE (dumpsys media_session)\n    Sessions Stack - have 0 sessions:\n"
+
+    def conf(self, text):
+        (self.tmp / "media.conf").write_text(text)
+
+    def test_idle_default_resumes_recent_player(self):
+        for text in (self.EMPTY, OLD_STOPPED):
+            for verb in ("toggle", "play"):
                 with self.subTest(verb=verb, text=text[:20]):
+                    (self.stub / "cmd.log").unlink(missing_ok=True)
                     self.dumpsys(text)
                     rc, out = self.run_media(verb)
                     self.assertEqual(rc, 0)
-                    self.assertIn("media=none via=none", out)
+                    self.assertEqual(self.log("cmd"), "media_session dispatch play\n")
+                    self.assertIn("media=play via=session", out)
+
+    def test_idle_skip_keys_do_nothing(self):
+        self.dumpsys(self.EMPTY)
+        for verb in ("next", "previous", "pause", "stop", "forward", "rewind"):
+            with self.subTest(verb=verb):
+                rc, out = self.run_media(verb)
+                self.assertEqual(rc, 0)
+                self.assertIn("media=none via=none", out)
         self.assertEqual(self.log("cmd") + self.log("input"), "")
 
-    def test_launch_override_restores_old_behaviour(self):
+    def test_idle_none_does_nothing(self):
+        self.conf("idle=none\n")
+        empty_like = NEW_PLAYING.replace("PLAYING(3)", "STOPPED(1)").replace("PAUSED(2)", "NONE(0)")
+        for text in (self.EMPTY, OLD_STOPPED, empty_like):
+            with self.subTest(text=text[:20]):
+                self.dumpsys(text)
+                rc, out = self.run_media("toggle")
+                self.assertEqual(rc, 0)
+                self.assertIn("media=none via=none", out)
+        self.assertEqual(self.log("cmd") + self.log("input") + self.log("app_process"), "")
+
+    def test_idle_app_launches_chosen_app(self):
+        self.conf("idle=app\napp=com.netease.cloudmusic\n")
+        (self.tmp / "companion").mkdir()
+        (self.tmp / "companion" / "island.apk").write_bytes(b"PK")
+        self.dumpsys(self.EMPTY)
+        rc, out = self.run_media("toggle")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("media=launch via=app app=com.netease.cloudmusic", out)
+        self.assertIn("io.github.rczlin.sidekey.island.MediaLaunch com.netease.cloudmusic 5000", self.log("app_process"))
+        self.assertEqual(self.log("cmd"), "")
+
+    def test_idle_app_timeout_falls_back_to_recent(self):
+        self.conf("idle=app\napp=com.netease.cloudmusic\n")
+        (self.tmp / "companion").mkdir()
+        (self.tmp / "companion" / "island.apk").write_bytes(b"PK")
+        (self.stub / "launch_timeout").touch()
+        self.dumpsys(self.EMPTY)
+        rc, out = self.run_media("play")
+        self.assertEqual(rc, 0)
+        self.assertEqual(self.log("cmd"), "media_session dispatch play\n")
+
+    def test_idle_app_without_companion_uses_monkey(self):
+        self.conf("idle=app\napp=com.netease.cloudmusic\n")
+        self.dumpsys(self.EMPTY)
+        self.run_media("toggle")
+        self.assertEqual(self.log("monkey"), "-p com.netease.cloudmusic -c android.intent.category.LAUNCHER 1\n")
+        self.assertEqual(self.log("cmd"), "media_session dispatch play\n")
+
+    def test_idle_app_rejects_bad_package(self):
+        for bad in ("com.a;reboot", "nodot", "", "com..a"):
+            with self.subTest(bad=bad):
+                (self.stub / "cmd.log").unlink(missing_ok=True)
+                self.conf(f"idle=app\napp={bad}\n")
+                self.dumpsys(self.EMPTY)
+                self.run_media("toggle")
+                self.assertEqual(self.log("cmd"), "media_session dispatch play\n")
+        self.assertEqual(self.log("app_process") + self.log("monkey"), "")
+
+    def test_launch_env_forces_recent(self):
+        self.conf("idle=none\n")
         self.dumpsys(OLD_STOPPED)
         env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}", STUB=str(self.stub), SIDEKEY_MEDIA_LAUNCH="1")
         subprocess.run(["sh", str(self.tmp / "media.sh"), "toggle"], env=env, capture_output=True, text=True, timeout=20)
         self.assertEqual(self.log("cmd"), "media_session dispatch play\n")
+
+    def test_playing_session_ignores_idle_setting(self):
+        self.conf("idle=app\napp=com.netease.cloudmusic\n")
+        self.dumpsys(NEW_PLAYING)
+        self.run_media("toggle")
+        self.assertEqual(self.log("cmd"), "media_session dispatch pause\n")
+        self.assertEqual(self.log("app_process"), "")
 
     def test_toggle_unreadable_state_falls_back_to_play_pause(self):
         (self.stub / "dumpsys_fail").touch()

@@ -6,7 +6,9 @@ OUT="$ROOT/build/companion-test"
 SRC="$ROOT/companion/src/io/github/rczlin/sidekey/island"
 rm -rf "$OUT" && mkdir -p "$OUT"
 javac -encoding UTF-8 --release 11 -d "$OUT" \
-  "$SRC/PressNames.java" "$SRC/PosterArgs.java" \
-  "$ROOT/companion/test/PressNamesTest.java" "$ROOT/companion/test/PosterArgsTest.java"
+  "$SRC/PressNames.java" "$SRC/PosterArgs.java" "$SRC/MediaLaunchArgs.java" \
+  "$ROOT/companion/test/io/github/rczlin/sidekey/island/MediaLaunchArgsAccess.java" \
+  "$ROOT/companion/test/PressNamesTest.java" "$ROOT/companion/test/PosterArgsTest.java" "$ROOT/companion/test/MediaLaunchArgsTest.java"
 java -Dfile.encoding=UTF-8 -cp "$OUT" PressNamesTest
 java -Dfile.encoding=UTF-8 -cp "$OUT" PosterArgsTest
+java -Dfile.encoding=UTF-8 -cp "$OUT" MediaLaunchArgsTest

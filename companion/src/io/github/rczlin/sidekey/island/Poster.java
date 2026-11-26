@@ -217,7 +217,7 @@ public final class Poster {
 
     // ---- 隐藏 API（app_process 不受隐藏 API 限制） ----
 
-    private static Context systemContext() throws Exception {
+    static Context systemContext() throws Exception {
         Class<?> at = Class.forName("android.app.ActivityThread");
         Constructor<?> c = at.getDeclaredConstructor();
         c.setAccessible(true);

@@ -13,3 +13,11 @@
 - 真机反馈：完全没有播放时按键会拉起音乐应用。原因：无会话时 `cmd media_session dispatch` 被转给最近的媒体按钮接收者。
 - 反编译 ColorOS 17 SystemUI（MediaActionsKt.createActionsFromState / getStandardAction）：卡片按会话 PlaybackState 选播放或暂停按钮，直接调用该会话 TransportControls.play/pause/skipToNext/skipToPrevious；无会话不显示卡片。恢复卡片（ResumeMediaBrowser）需用户点击才连接 MediaBrowserService 播放。
 - 修复：media.sh 先读 dumpsys，只有存在非 NONE/STOPPED/ERROR 的会话才下发；否则输出 `media=none via=none`。`SIDEKEY_MEDIA_LAUNCH=1` 恢复旧行为。测试 12 项通过。
+
+## 0.5.10 补充：没有播放器时的拉起
+
+- 用户需要在没有会话时拉起，且两种方式都要。新增 `media.conf`（`idle=recent|app|none`，`app=<包名>`），WebUI 绑定页即时写入，`customize.sh` 升级时迁移。
+- `recent`：沿用 0.5.8 行为，`cmd media_session dispatch play` 交给最近的媒体按钮接收者。
+- `app`：伴生 APK 新增 `MediaLaunch`（app_process，root）。先用 `MediaSessionManager.getActiveSessions(null)` 找该包的会话直接 `TransportControls.play()`；没有则 `monkey` 打开应用，每 200 ms 轮询会话，最多 5 秒后播放。失败时退回 `recent`。没有 APK 时只用 monkey 加 dispatch play。
+- 包名在 shell、Java、WebUI 三处校验，防止注入。只有 toggle/play 会拉起，其他动词在无会话时仍不动作。
+- 未真机验证：`getActiveSessions(null)` 在 uid 0 下是否需要额外权限；部分音乐应用启动后是否自动建立会话。
