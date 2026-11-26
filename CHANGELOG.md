@@ -1,3 +1,9 @@
+# 0.5.13
+
+- “指定应用”不再打开应用界面，和控制中心一样只在后台起播：先按控制中心方式继续它的历史播放；不在历史里就对它的会话播放；再不行把“播放”媒体键显式发给它自己声明的媒体按键接收器（耳机按键唤起同款），由它在后台启动播放服务。
+- “继续最近”的事件没能让播放器播起来时，同样改为把播放键直接发给该播放器，而不是交给系统。
+- 伴生组件不可用时只交给系统媒体按键，不再用 monkey 打开应用。
+
 # 0.5.12
 
 - 修复 0.5.11 “继续最近 / 指定应用”在真机上报 `NullPointerException: ... MediaServiceManager.getMediaSessionServiceRegisterer()`：伴生组件在 app_process 里没有初始化 Mainline 媒体模块，取 MediaSessionManager 失败，整个拉起直接退回系统媒体按键。现在启动时补上 `ActivityThread.initializeMainlineModules()`；万一仍取不到，也会照常发送控制中心的播放事件，只是不再确认播放状态。

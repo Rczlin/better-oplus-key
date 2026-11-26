@@ -6,9 +6,9 @@ export interface MediaSettings { idle: MediaIdle; app: string }
 export const MEDIA_DEFAULT: MediaSettings = { idle: "recent", app: "" };
 
 export const MEDIA_IDLE_MODES: { value: MediaIdle; label: string; help: string }[] = [
-  { value: "recent", label: "继续最近", help: "像耳机按键一样，让最近播放过的应用继续播放" },
-  { value: "app", label: "指定应用", help: "打开你选的音乐应用并开始播放" },
-  { value: "none", label: "不处理", help: "和控制中心一样，没有播放器时按了没反应" },
+  { value: "recent", label: "继续最近", help: "和控制中心空卡片的播放键一样，在后台继续最近播放的应用，不打开界面" },
+  { value: "app", label: "指定应用", help: "让你选的音乐应用在后台开始播放，不打开界面" },
+  { value: "none", label: "不处理", help: "没有播放器时按了没反应" },
 ];
 
 export function parseMediaConf(text: string): MediaSettings {

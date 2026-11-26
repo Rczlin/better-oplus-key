@@ -31,7 +31,7 @@ echo "$*" >> "$STUB/app_process.log"
 if [ -f "$STUB/launch_timeout" ]; then echo "media.launch=timeout"; echo "media.error=no history player"; exit 1; fi
 case "$*" in
   *--recent*) echo "media.app=com.heytap.music"; echo "media.via=event"; echo "media.launch=history" ;;
-  *) echo "media.app=$5"; echo "media.launch=app" ;;
+  *) echo "media.app=$5"; echo "media.via=button"; echo "media.launch=button" ;;
 esac
 """,
     "monkey": r"""#!/bin/sh
@@ -196,7 +196,7 @@ class MediaScriptTest(unittest.TestCase):
         self.dumpsys(self.EMPTY)
         rc, out = self.run_media("toggle")
         self.assertEqual(rc, 0, out)
-        self.assertIn("media=launch via=app app=com.netease.cloudmusic", out)
+        self.assertIn("media=launch via=button app=com.netease.cloudmusic", out)
         self.assertIn("io.github.rczlin.sidekey.island.MediaLaunch com.netease.cloudmusic 5000", self.log("app_process"))
         self.assertEqual(self.log("cmd"), "")
 
@@ -209,11 +209,11 @@ class MediaScriptTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(self.log("cmd"), "media_session dispatch play\n")
 
-    def test_idle_app_without_companion_uses_monkey(self):
+    def test_idle_app_without_companion_never_opens_app(self):
         self.conf("idle=app\napp=com.netease.cloudmusic\n")
         self.dumpsys(self.EMPTY)
         self.run_media("toggle")
-        self.assertEqual(self.log("monkey"), "-p com.netease.cloudmusic -c android.intent.category.LAUNCHER 1\n")
+        self.assertEqual(self.log("monkey"), "")
         self.assertEqual(self.log("cmd"), "media_session dispatch play\n")
 
     def test_idle_app_rejects_bad_package(self):

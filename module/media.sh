@@ -66,7 +66,7 @@ run_launch() {
   OUT=$(app_process "-Djava.class.path=$APK" /system/bin --nice-name=sidekey-media \
     io.github.rczlin.sidekey.island.MediaLaunch "$@" 2>&1)
   case "$OUT" in
-    *media.launch=history*|*media.launch=session*|*media.launch=app*)
+    *media.launch=history*|*media.launch=session*|*media.launch=button*)
       WHO=$(echo "$OUT" | sed -n 's/^media\.app=//p' | head -n 1)
       HOW=$(echo "$OUT" | sed -n 's/^media\.launch=//p' | head -n 1)
       echo "media=launch via=$HOW app=$WHO"
@@ -84,12 +84,8 @@ launch_recent() {
 }
 
 launch_app() {
-  if [ -f "$APK" ]; then
-    run_launch "$APP" 5000
-  else
-    monkey -p "$APP" -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1
-    sleep 2
-  fi
+  # 不打开应用界面；伴生组件不可用时只能交给系统媒体按键
+  run_launch "$APP" 5000
   VERB=play
 }
 
