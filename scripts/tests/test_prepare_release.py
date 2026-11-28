@@ -38,8 +38,22 @@ class PrepareReleaseTest(unittest.TestCase):
             "zipUrl": "https://github.com/Rczlin/better-oplus-key/releases/download/v0.4.0/oplus-sidekey-0.4.0.zip",
             "changelog": "https://github.com/Rczlin/better-oplus-key/releases/download/v0.4.0/changelog.md",
         })
-        self.assertEqual((self.root / "dist/changelog.md").read_bytes(),
-                         (self.root / "CHANGELOG.md").read_bytes())
+        self.assertEqual((self.root / "dist/changelog.md").read_text(encoding="utf-8"),
+                         "# 0.4.0\n更新说明\n")
+
+    def test_changelog_holds_only_the_released_version(self):
+        (self.root / "CHANGELOG.md").write_text(
+            "# 0.4.0\n\n- 新功能\n\n# 0.3.9\n\n- 旧修复\n", encoding="utf-8")
+        result = self.run_release()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual((self.root / "dist/changelog.md").read_text(encoding="utf-8"),
+                         "# 0.4.0\n\n- 新功能\n")
+
+    def test_rejects_changelog_without_the_released_version(self):
+        (self.root / "CHANGELOG.md").write_text("# 0.3.9\n- 旧\n", encoding="utf-8")
+        result = self.run_release()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("CHANGELOG", result.stderr)
 
     def test_rejects_a_tag_that_does_not_match_module_version(self):
         result = self.run_release("v0.5.0")
